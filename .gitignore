@@ -1,0 +1,4 @@
+internal/
+.env
+node_modules/
+dist/
