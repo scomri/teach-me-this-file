@@ -8,6 +8,10 @@ Scaffold only. No application code yet. Planning notes are kept outside version 
 
 No build, lint, or test commands exist yet. Once a `package.json` lands, add the real commands here instead of guessing them.
 
+## Documentation split
+
+Committed docs are for reviewers: `README.md`, `DECISIONS.md`, `GLOSSARY.md`, `docs/adr/`, this file. One short ADR per significant architectural choice (context, decision, consequences); `DECISIONS.md` is the required summary and links to the ADRs instead of repeating them. Write them in reviewer voice, with no private context. Raw grilling, open questions, risks and drafts go in `internal/` (gitignored), mainly `internal/GRILL-LOG.md`. Log a decision there first; promote it to `DECISIONS.md` once it is built or stable. Never link to or quote `internal/` content from a committed file.
+
 ## Deliverables
 
 Public GitHub repo, live URL, `README.md` (how to run and use), `DECISIONS.md` (choices and why, what was not done and why, known weaknesses, what to do with 4 more hours, ~5 test scenarios with results). `DECISIONS.md` is a first-class deliverable; record decisions as they are made.
