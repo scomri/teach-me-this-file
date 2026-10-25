@@ -44,3 +44,17 @@ Supported and refused file types, scanned-page handling, and the long-document c
 ## Out of scope (say so in the README and DECISIONS)
 
 Accounts, database, multiple files per lesson, voice/avatar, teacher analytics.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in `scomri/teach-me-this-file`, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
