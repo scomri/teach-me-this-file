@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import FileIngest from './ui/FileIngest.jsx';
 
 export default function App() {
   const [api, setApi] = useState('checking...');
@@ -83,6 +84,8 @@ export default function App() {
     <main className="mx-auto max-w-xl p-8">
       <h1 className="text-2xl font-semibold">Teach Me This File</h1>
       <p className="mt-2 text-slate-600">API: {api}</p>
+
+      <FileIngest />
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"
