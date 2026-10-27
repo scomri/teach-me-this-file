@@ -13,3 +13,10 @@ npm run build  # build the client into client/dist
 npm start      # serve client/dist and the API from one port (PORT, default 8080)
 npm test       # run the server tests (node:test)
 ```
+
+### Docker
+
+```sh
+docker build -t teach-me-this-file:local .
+docker run --rm -p 8080:8080 teach-me-this-file:local   # http://localhost:8080
+```

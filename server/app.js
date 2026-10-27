@@ -19,7 +19,7 @@ export function createApp({ log = console.log } = {}) {
 
   // Production: serve the built client; unknown paths fall back to the SPA shell.
   app.use(express.static(dist));
-  app.get('/{*splat}', (req, res) => res.sendFile(path.join(dist, 'index.html')));
+  app.get('/{*splat}', (req, res) => res.sendFile('index.html', { root: dist }));
 
   app.use(errorHandler(log));
   return app;

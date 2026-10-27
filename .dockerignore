@@ -1,0 +1,9 @@
+*
+!package.json
+!package-lock.json
+!server/
+!client/
+client/node_modules
+client/dist
+**/.env*
+**/*.test.js
