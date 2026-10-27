@@ -1,0 +1,11 @@
+# Allowlist for `gcloud run deploy --source .`: upload only what the Docker build needs.
+/*
+!/Dockerfile
+!/.dockerignore
+!/package.json
+!/package-lock.json
+!/server/
+!/client/
+client/node_modules/
+client/dist/
+**/.env*

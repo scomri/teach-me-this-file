@@ -22,3 +22,17 @@ CI runs the tests, the build and a gitleaks secret scan on every pull request an
 docker build -t teach-me-this-file:local .
 docker run --rm -p 8080:8080 teach-me-this-file:local   # http://localhost:8080
 ```
+
+## Deploy
+
+Live: https://teach-me-this-file-630387171976.europe-west1.run.app
+
+Deploys are manual: one command, run from a clean checkout of `main` with `gcloud` authenticated against the project. Cloud Build builds the `Dockerfile`, and `.gcloudignore` limits the upload to the build inputs.
+
+```sh
+gcloud run deploy teach-me-this-file --source . --region europe-west1 \
+  --allow-unauthenticated --max-instances 1 --min-instances 0 \
+  --memory 512Mi --cpu 1 --concurrency 80 --timeout 300
+```
+
+Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /api/streams/:id/cancel`) must reach the same instance as the stream. Do not add `--use-http2`, because the server speaks HTTP/1.1 only.
