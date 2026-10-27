@@ -12,6 +12,8 @@ No build, lint, or test commands exist yet. Once a `package.json` lands, add the
 
 Committed docs are for reviewers: `README.md`, `DECISIONS.md`, `GLOSSARY.md`, `docs/adr/`, this file. One short ADR per significant architectural choice (context, decision, consequences); `DECISIONS.md` is the required summary and links to the ADRs instead of repeating them. Write them in reviewer voice, with no private context. Raw grilling, open questions, risks and drafts go in `internal/` (gitignored), mainly `internal/GRILL-LOG.md`. Log a decision there first; promote it to `DECISIONS.md` once it is built or stable. Never link to or quote `internal/` content from a committed file.
 
+The same rule covers everything published to GitHub: issue titles and bodies, comments, PR descriptions, review replies and commit messages. Write them in reviewer voice. They must not contain `internal/` paths, internal decision numbers (`D1`, `D24`, …), names of people, hiring or interview context, or deadline pressure. Describe a decision by what it is and why, not by where it was logged. Re-read the text before every `gh issue create`, `gh issue comment`, `gh pr create` or commit.
+
 ## Deliverables
 
 Public GitHub repo, live URL, `README.md` (how to run and use), `DECISIONS.md` (choices and why, what was not done and why, known weaknesses, what to do with 4 more hours, ~5 test scenarios with results). `DECISIONS.md` is a first-class deliverable; record decisions as they are made.

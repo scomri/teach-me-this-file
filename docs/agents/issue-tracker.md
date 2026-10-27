@@ -13,6 +13,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
+## Issue structure
+
+- **Parent issue per vertical slice.** Each deployable slice of the build (and each extra after core) gets one parent issue describing the slice and its done-when criteria.
+- **Implementation tickets as sub-issues.** Each ticket covers one concern and lands as one PR. Its body holds acceptance criteria and the tests that prove them. Link it to its parent as a GitHub sub-issue, and record order between tickets with native issue dependencies (`blocked_by`), as described under Wayfinding operations below.
+- **Open tickets only when the slice is fully decided.** Label a ticket `ready-for-agent` when an agent can build it from the body alone, or `ready-for-human` when a person must do it (for example, writing prompts).
+- **Public text.** Issues are public: follow the publishing rule in `AGENTS.md`.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_
