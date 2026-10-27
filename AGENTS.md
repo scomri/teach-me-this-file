@@ -4,9 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Scaffold only. No application code yet. Planning notes are kept outside version control.
+Slice 0 skeleton: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI. Planning notes are kept outside version control.
 
-No build, lint, or test commands exist yet. Once a `package.json` lands, add the real commands here instead of guessing them.
+Commands (Node 24):
+
+```sh
+npm install
+npm run dev    # Express API on :8080 + Vite client on :5173 (proxies /api)
+npm run build  # build the client into client/dist
+npm start      # serve client/dist and the API from one port (PORT, default 8080)
+npm test       # run the server tests (node:test)
+```
+
+Docker:
+
+```sh
+docker build -t teach-me-this-file:local .
+docker run --rm -p 8080:8080 teach-me-this-file:local   # http://localhost:8080
+```
+
+There is no lint command yet.
 
 ## Documentation split
 

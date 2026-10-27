@@ -27,6 +27,15 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | UI language | English UI, `dir="auto"` on all content. | Right-to-left material renders correctly. |
 | Evidence | Unit tests for the state machine, plus a scripted-student harness running ~5 scenarios. | "It looked fine to me" is not enough. |
 
+## Libraries
+
+- **express** (runtime): HTTP server; serves the built client and the API.
+- **vite**, **@vitejs/plugin-react** (dev): client build and dev server.
+- **react**, **react-dom** (dev): UI, bundled into `client/dist` at build time, so the production image does not need them.
+- **tailwindcss**, **@tailwindcss/vite** (dev): styling, as the brief requires.
+- Tests use the built-in `node:test` runner and global `fetch`; no test framework.
+- Dev runs the API and Vite together with a small Node script (`scripts/dev.js`) rather than adding `concurrently`.
+
 ## Not doing
 
 - **Free-text provider URL:** SSRF risk on Cloud Run's metadata server. URLs are hardcoded presets.
