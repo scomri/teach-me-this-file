@@ -20,7 +20,10 @@ async function readText(file) {
 // docx loads on demand: mammoth is large and most files are not Word.
 const readDocx = async (file) => (await import('./docx.js')).readDocx(file);
 
-const READERS = { docx: readDocx, txt: readText, md: readText };
+// pptx likewise: jszip is only needed for slides.
+const readPptx = async (file) => (await import('./pptx.js')).readPptx(file);
+
+const READERS = { docx: readDocx, pptx: readPptx, txt: readText, md: readText };
 const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
