@@ -18,21 +18,27 @@ const count = (text, re) => text.match(re)?.length ?? 0;
 // encodings (Cyrillic, Greek…) decode as windows-1252 garbage; add a detector
 // library if real files need them.
 function legacyEncoding(bytes) {
-  // Accented Latin letters sit inside ASCII words ("procédé"); Hebrew and Arabic
-  // words are runs of high bytes, even in a mostly English file.
+  // Accented Latin letters sit inside ASCII words ("procédé") or stand alone ("à");
+  // Hebrew and Arabic words are runs of high bytes, even in a mostly English file.
   let high = 0;
   let inLatinWord = 0;
+  let inRun = 0;
+  let asciiLetters = false;
   for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] < 0x80) continue;
+    if (bytes[i] < 0x80) {
+      asciiLetters ||= isAsciiLetter(bytes[i]);
+      continue;
+    }
     high++;
     if (isAsciiLetter(bytes[i - 1]) || isAsciiLetter(bytes[i + 1])) inLatinWord++;
+    if (bytes[i - 1] >= 0x80 || bytes[i + 1] >= 0x80) inRun++;
   }
-  if (inLatinWord > high / 2) return 'windows-1252';
+  if (asciiLetters && (inLatinWord > high / 2 || inRun <= high / 2)) return 'windows-1252';
 
   // Hebrew or Arabic: Arabic text hits bytes windows-1255 leaves undefined (ع ف ق ك);
   // otherwise the code page whose script block covers more of the text wins.
   const he = new TextDecoder('windows-1255').decode(bytes);
   const ar = new TextDecoder('windows-1256').decode(bytes);
-  const heScore = he.includes('�') ? -1 : count(he, /[֑-״]/g);
-  return count(ar, /[؀-ۿ]/g) >= heScore ? 'windows-1256' : 'windows-1255';
+  const heScore = he.includes('�') ? -1 : count(he, /\p{Script=Hebrew}/gu);
+  return count(ar, /\p{Script=Arabic}/gu) >= heScore ? 'windows-1256' : 'windows-1255';
 }

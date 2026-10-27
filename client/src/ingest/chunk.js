@@ -33,32 +33,33 @@ function splitLong(s, max) {
 }
 
 // Splits text at blank lines and before every heading line (outside code fences).
-// A heading stays with the body that follows it; `heading` is set on the paragraph it opens.
+// A heading stays with the body that follows it; consecutive headings with no body
+// between them open one paragraph, labelled with the last (most specific) heading.
 function paragraphs(text) {
   const out = [];
   let lines = [];
   let heading = null;
-  let body = 0;
+  let hasBody = false;
   let fence = false;
   const flush = () => {
     if (lines.length) out.push({ text: lines.join('\n').trim(), heading });
     lines = [];
     heading = null;
-    body = 0;
+    hasBody = false;
   };
   for (const line of text.split('\n')) {
     if (FENCE.test(line)) fence = !fence;
     const h = fence ? null : HEADING.exec(line);
     if (h) {
-      if (body) flush();
+      if (hasBody) flush();
       heading = h[1].trim();
       lines.push(line);
     } else if (!line) {
-      if (body) flush();
+      if (hasBody) flush();
       else if (lines.length) lines.push(''); // blank line between a heading and its body
     } else {
       lines.push(line);
-      body++;
+      hasBody = true;
     }
   }
   flush();
@@ -67,8 +68,7 @@ function paragraphs(text) {
 
 // pages: [{ page, pageLabel, heading, text }]. Chunks never cross pages, and every
 // heading starts a new chunk; each chunk carries the heading in effect at its start.
-// Every page is kept: the size limit
-// applies when the plan request is built, not here.
+// Every page is kept: the size limit applies when the plan request is built, not here.
 export function chunkPages(pages, { max = CHUNK_CHARS } = {}) {
   const chunks = [];
   let totalChars = 0;

@@ -76,6 +76,11 @@ test('a heading line is found without a blank line before it', () => {
   assert.deepEqual(chunks.map((c) => [c.heading, c.text]), [[null, 'intro'], ['Cells', '# Cells\ntext']]);
 });
 
+test('consecutive headings open one chunk, labelled with the last', () => {
+  const { chunks } = chunkPages([page('# Chapter 3\n\n## Photosynthesis\n\nbody')]);
+  assert.deepEqual(chunks.map((c) => [c.heading, c.text]), [['Photosynthesis', '# Chapter 3\n\n## Photosynthesis\n\nbody']]);
+});
+
 test('# lines inside a code fence are not headings', () => {
   const { chunks } = chunkPages([page('```\n# not a heading\n```')]);
   assert.equal(chunks[0].heading, null);

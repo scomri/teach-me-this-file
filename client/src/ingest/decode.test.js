@@ -55,6 +55,18 @@ test('legacy Arabic without a word-initial alef', () => {
   assert.equal(decodeText(legacy(text, 'windows-1256')), text);
 });
 
+test('legacy French whose accents are one-letter words stays Latin', () => {
+  for (const text of ['Il est à Paris. Il va à Lyon.', 'À la maison — à demain', '« À bientôt »']) {
+    assert.equal(decodeText(legacy(text, 'windows-1252')), text);
+  }
+});
+
+test('a one-letter legacy Hebrew or Arabic file is not read as Latin', () => {
+  assert.equal(decodeText(legacy('ש', 'windows-1255')), 'ש');
+  assert.equal(decodeText(legacy('שלום', 'windows-1255')), 'שלום');
+  assert.equal(decodeText(legacy('سلام', 'windows-1256')), 'سلام');
+});
+
 test('legacy Latin (windows-1252) is not mistaken for Hebrew', () => {
   assert.equal(decodeText(legacy(french, 'windows-1252')), french);
 });
