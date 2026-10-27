@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ACCEPTED, ingestFile } from '../ingest/ingest.js';
 import { detectScript } from '../ingest/script.js';
-import { MAX_FILE_BYTES } from '../../../shared/limits.js';
+import { MAX_FILE_MB } from '../../../shared/limits.js';
 
 const SHOWN = 200; // ponytail: dev view; a 20 MB file has ~14k chunks, too many to render at once
 
@@ -36,7 +36,7 @@ export default function FileIngest() {
       </label>
       <input id="file" className="mt-1 block w-full text-sm" type="file" accept={ACCEPTED.join(',')} onChange={pick} />
       <p className="mt-1 text-xs text-slate-500">
-        {ACCEPTED.map((x) => x.slice(1).toUpperCase()).join(', ')} · up to {MAX_FILE_BYTES / 1024 / 1024} MB
+        {ACCEPTED.map((x) => x.slice(1).toUpperCase()).join(', ')} · up to {MAX_FILE_MB} MB
       </p>
 
       <div aria-live="polite">

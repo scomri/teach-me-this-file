@@ -1,6 +1,6 @@
 // File in, chunks out. Picks a reader by extension; every reader returns pages
 // ({ page, pageLabel, heading, text }) and the shared chunker does the rest.
-import { MAX_FILE_BYTES } from '../../../shared/limits.js';
+import { MAX_FILE_BYTES, MAX_FILE_MB } from '../../../shared/limits.js';
 import { chunkPages } from './chunk.js';
 import { decodeText } from './decode.js';
 
@@ -35,7 +35,7 @@ export async function ingestFile(file) {
     );
   }
   if (file.size > MAX_FILE_BYTES) {
-    throw new IngestError('too_large', `This file is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB.`);
+    throw new IngestError('too_large', `This file is larger than ${MAX_FILE_MB} MB.`);
   }
   if (!file.size) throw new IngestError('empty', 'This file is empty.');
 

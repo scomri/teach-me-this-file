@@ -6,4 +6,5 @@
 export const MAX_DOC_CHARS = 100_000;
 
 // Largest file the picker accepts. It also bounds how much text a document can hold.
-export const MAX_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_FILE_MB = 20;
+export const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
