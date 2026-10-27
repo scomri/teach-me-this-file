@@ -17,7 +17,10 @@ async function readText(file) {
   return { pages: [{ page: null, pageLabel: null, heading: null, text }] };
 }
 
-const READERS = { txt: readText, md: readText };
+// docx loads on demand: mammoth is large and most files are not Word.
+const readDocx = async (file) => (await import('./docx.js')).readDocx(file);
+
+const READERS = { docx: readDocx, txt: readText, md: readText };
 const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
