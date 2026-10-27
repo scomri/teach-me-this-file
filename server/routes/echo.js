@@ -12,7 +12,7 @@ export function echoRouter(log = console.log) {
       return res.status(400).json({ error: `text must be a non-empty string up to ${MAX_TEXT} characters` });
     }
 
-    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
     res.flushHeaders();
 
     const words = text.trim().split(/\s+/);

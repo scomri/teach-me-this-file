@@ -14,8 +14,10 @@ export function requestLogger(log = console.log) {
 
 export function errorHandler(log = console.log) {
   return (err, req, res, next) => {
-    log(`${req.method} ${req.originalUrl} error: ${err.message}`);
+    // V8 parse messages can echo body fragments, so use a fixed message.
+    const message = err.type === 'entity.parse.failed' ? 'Invalid JSON body' : err.message;
+    log(`${req.method} ${req.originalUrl} error: ${message}`);
     if (res.headersSent) return res.end();
-    res.status(err.status ?? 500).json({ error: err.status && err.status < 500 ? err.message : 'Internal error' });
+    res.status(err.status ?? 500).json({ error: err.status && err.status < 500 ? message : 'Internal error' });
   };
 }

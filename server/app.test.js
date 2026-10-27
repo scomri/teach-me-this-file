@@ -86,3 +86,15 @@ test('X-Api-Key never appears in log output, including on an error path', async 
   assert.ok(lines.some((l) => l.includes('error:')), 'error path should be logged');
   assert.ok(!lines.join('\n').includes('sk-test-123'));
 });
+
+test('malformed JSON returns a fixed message and never echoes the body', async (t) => {
+  const { url, lines } = start(t);
+  const res = await post(url, '{"text": "secret-fragment');
+  assert.equal(res.status, 400);
+  const body = await res.text();
+  assert.deepEqual(JSON.parse(body), { error: 'Invalid JSON body' });
+
+  assert.ok(await waitFor(() => lines.some((l) => l.includes('error:'))));
+  assert.ok(!body.includes('secret-fragment'));
+  assert.ok(!lines.join(' ').includes('secret-fragment'));
+});
