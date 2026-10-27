@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './app.js';
+import { MAX_BODY_BYTES } from '../shared/limits.js';
 
 // Starts the app on an ephemeral port with a capturing log sink.
 function start(t, opts = {}) {
@@ -163,4 +164,33 @@ test('malformed JSON returns a fixed message and never echoes the body', async (
   assert.ok(await waitFor(() => lines.some((l) => l.includes('error:'))));
   assert.ok(!body.includes('secret-fragment'));
   assert.ok(!lines.join(' ').includes('secret-fragment'));
+});
+
+// A JSON body of exactly `bytes` bytes, with `marker` inside so leaks are detectable.
+const bodyOfSize = (bytes, marker) => {
+  const pad = bytes - Buffer.byteLength(JSON.stringify({ text: marker }));
+  return JSON.stringify({ text: marker + 'a'.repeat(pad) });
+};
+
+test('a JSON body at the size limit is accepted', async (t) => {
+  const { url } = start(t);
+  const res = await post(url, bodyOfSize(MAX_BODY_BYTES, 'SECRETMARKER'));
+  // The echo route has its own, smaller text cap; reaching it (not 413) means the parser accepted the body.
+  assert.notEqual(res.status, 413);
+  await res.text();
+});
+
+test('a JSON body over the limit returns a fixed 413 and echoes nothing', async (t) => {
+  const { url, lines } = start(t);
+  const res = await post(url, bodyOfSize(MAX_BODY_BYTES + 1, 'SECRETMARKER'), { 'X-Api-Key': 'sk-secret-key' });
+  assert.equal(res.status, 413);
+  const text = await res.text();
+  assert.deepEqual(JSON.parse(text), {
+    error: 'request_too_large',
+    message: 'The request is too large. Try a shorter document.',
+  });
+  for (const out of [text, lines.join('\n')]) {
+    assert.ok(!out.includes('SECRETMARKER'));
+    assert.ok(!out.includes('sk-secret-key'));
+  }
 });
