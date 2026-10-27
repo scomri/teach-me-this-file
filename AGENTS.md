@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run. Slice 1 in progress: file ingestion (TXT and MD built; PDF, DOCX, PPTX next), then planning. Planning notes are kept outside version control.
+Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run. Slice 1 in progress: file ingestion (TXT, MD and PDF built; DOCX, PPTX next), then planning. Planning notes are kept outside version control.
 
 Commands (Node 24):
 
