@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY client ./client
+COPY shared ./shared
 RUN npm run build
 
 FROM node:24.22.1-slim

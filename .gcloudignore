@@ -6,6 +6,7 @@
 !/package-lock.json
 !/server/
 !/client/
+!/shared/
 client/node_modules/
 client/dist/
 **/.env*
