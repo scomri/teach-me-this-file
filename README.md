@@ -14,6 +14,8 @@ npm start      # serve client/dist and the API from one port (PORT, default 8080
 npm test       # run the server tests (node:test)
 ```
 
+CI runs the tests, the build and a gitleaks secret scan on every pull request and on pushes to `main`.
+
 ### Docker
 
 ```sh
