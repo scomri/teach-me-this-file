@@ -168,7 +168,7 @@ test('malformed JSON returns a fixed message and never echoes the body', async (
 
 // A JSON body of exactly `bytes` bytes, with `marker` inside so leaks are detectable.
 const bodyOfSize = (bytes, marker) => {
-  const pad = bytes - Buffer.byteLength(JSON.stringify({ text: marker + '' }));
+  const pad = bytes - Buffer.byteLength(JSON.stringify({ text: marker }));
   return JSON.stringify({ text: marker + 'a'.repeat(pad) });
 };
 
