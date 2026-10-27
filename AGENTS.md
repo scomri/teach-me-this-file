@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Slice 0 skeleton: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI. Planning notes are kept outside version control.
+Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run. Slice 1 in progress: file ingestion (TXT and MD built; PDF, DOCX, PPTX next), then planning. Planning notes are kept outside version control.
 
 Commands (Node 24):
 
@@ -42,10 +42,11 @@ Public GitHub repo, live URL, `README.md` (how to run and use), `DECISIONS.md` (
 
 ## Architecture (planned)
 
-Three layers, kept separate on purpose:
+Layers, kept separate on purpose:
 
 - `ai/`: provider adapter behind one interface (swappable), prompts, JSON-schema validation of model output.
 - `lesson/`: pure state machine in plain JS, no React, no network. Steps, transitions, attempts, mastery. Must be unit-testable.
+- `ingest/`: file in, chunks out, in the browser. Pure and unit-testable; one reader per format behind `ingestFile`.
 - `ui/`: React components. Reads state, dispatches events. No prompt logic.
 
 Key design rules:
@@ -62,7 +63,7 @@ The reviewer's API key goes from a settings field to the server in an `X-Api-Key
 
 ## Ingestion scope
 
-Supported and refused file types, scanned-page handling, and the long-document cap are decisions still open. Record each one in `DECISIONS.md` when made. Unsupported, empty, or corrupt files must show a clear error state, not a crash.
+Decided and recorded in `DECISIONS.md` (File types, Chunks, Text direction, Text encoding, Long documents). In short: PDF, DOCX, PPTX, TXT and MD are read in the browser; legacy formats are refused with a "save as" message; the whole document is kept and only the plan request is size-limited; limits live in `shared/limits.js`. Unsupported, empty, or corrupt files must show a clear error state, not a crash.
 
 ## Out of scope (say so in the README and DECISIONS)
 
