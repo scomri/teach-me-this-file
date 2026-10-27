@@ -22,8 +22,8 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | Provider | One OpenAI-compatible adapter with presets: Gemini (default), Groq, OpenRouter, OpenAI. Separate evaluator and teacher models. | Works with the reviewer's key. Evaluator can be cheaper. |
 | File types | PDF (text layer), TXT, MD, DOCX. PDF read in the browser with pdf.js. Scans get a clear "no readable text" error until vision transcription lands as the first extra. | The server never receives the file, so requests stay small. |
 | Long documents | Hard cap with a "using pages 1–N of M" banner. Outline-first planning is an extra. | No crash or timeout on long files. |
-| Hosting | Google Cloud Run, one container, Express serves the front end, max one instance. | One URL, no CORS. |
-| Streaming and stop | POST + `fetch` stream, `AbortController`. Server aborts the provider call on disconnect. Stop keeps the lesson state and saves the partial reply; Regenerate re-runs only the reply. | Saves cost; state is never half-applied. |
+| Hosting (**built**) | Google Cloud Run, one container, Express serves the front end, max one instance, min zero. Manual deploy, no CD. See [ADR 0001](docs/adr/0001-cloud-run-single-container.md). | One URL, no CORS, no cloud credentials in CI. |
+| Streaming and stop | POST + `fetch` stream. Stop keeps the lesson state and saves the partial reply; Regenerate re-runs only the reply. **Built for the echo stream:** each stream gets a random id, and Stop calls `POST /api/streams/:id/cancel`, because Cloud Run does not pass client disconnects to the container. Every stream ends after 120 s at most. | Saves cost: the model stops generating when the user stops reading. State is never half-applied. |
 | UI language | English UI, `dir="auto"` on all content. | Right-to-left material renders correctly. |
 | Evidence | Unit tests for the state machine, plus a scripted-student harness running ~5 scenarios. | "It looked fine to me" is not enough. |
 
