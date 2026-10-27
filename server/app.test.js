@@ -65,7 +65,7 @@ test('echo-stream sends one SSE event per word, then done', async (t) => {
   assert.match(body, /event: done/);
 });
 
-test('cancelling an active stream returns 204, ends it, logs cancelled and empties the registry', async (t) => {
+test('cancelling an active stream returns 204, ends it, logs cancelled and empties the registry', { timeout: 5000 }, async (t) => {
   const { url, lines, streams } = start(t);
   const { id, reader } = await openStream(url);
   assert.equal(streams.size, 1);
@@ -73,7 +73,8 @@ test('cancelling an active stream returns 204, ends it, logs cancelled and empti
   for (;;) if ((await reader.read()).done) break; // server ended the response
   assert.ok(lines.includes('POST /api/echo-stream cancelled'), `got ${lines}`);
   assert.ok(await waitFor(() => lines.some((l) => l.startsWith('POST /api/streams/') && l.includes(' 204 '))));
-  assert.equal(streams.size, 0);
+  assert.ok(await waitFor(() => streams.size === 0));
+  await new Promise((r) => setTimeout(r, 50)); // let close fire
   assert.ok(!lines.some((l) => l.includes('aborted')), 'cancel must not also log aborted');
 });
 
@@ -107,7 +108,7 @@ test('the registry is empty after a normal finish and after a client disconnect'
   assert.ok(await waitFor(() => streams.size === 0 && lines.some((l) => l.includes('aborted'))));
 });
 
-test('the cancel route never logs the X-Api-Key value', async (t) => {
+test('the cancel route never logs the X-Api-Key value', { timeout: 5000 }, async (t) => {
   const { url, lines } = start(t);
   const { id, reader } = await openStream(url);
   await cancel(url, id, { 'X-Api-Key': 'sk-test-123' });

@@ -8,6 +8,7 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef(null);
   const idRef = useRef(null);
+  const stopRef = useRef(false); // Stop clicked before the start event arrived
 
   useEffect(() => {
     fetch('/api/health')
@@ -18,8 +19,10 @@ export default function App() {
 
   async function send() {
     const ac = new AbortController();
+    let reader;
     abortRef.current = ac;
     idRef.current = null;
+    stopRef.current = false;
     setOut('');
     setStatus('');
     setStreaming(true);
@@ -32,7 +35,7 @@ export default function App() {
       });
       if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
 
-      const reader = res.body.getReader();
+      reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       for (;;) {
@@ -50,7 +53,10 @@ export default function App() {
           }
           if (!data) continue;
           const payload = JSON.parse(data);
-          if (name === 'start') idRef.current = payload.id;
+          if (name === 'start') {
+            idRef.current = payload.id;
+            if (stopRef.current) stop();
+          }
           else if (name === 'error') throw new Error(payload.error);
           else if (name === 'message') setOut((o) => o + payload.word + ' ');
         }
@@ -59,6 +65,7 @@ export default function App() {
     } catch (err) {
       setStatus(err.name === 'AbortError' ? 'stopped' : `error: ${err.message}`);
     } finally {
+      reader?.cancel().catch(() => {});
       setStreaming(false);
     }
   }
@@ -66,7 +73,9 @@ export default function App() {
   function stop() {
     // Tell the server first: behind a proxy, closing our fetch may never reach it.
     const id = idRef.current;
-    if (id) fetch('/api/streams/' + id + '/cancel', { method: 'POST', keepalive: true }).catch(() => {});
+    stopRef.current = true;
+    if (!id) return; // cancel is sent when start arrives
+    fetch('/api/streams/' + id + '/cancel', { method: 'POST', keepalive: true }).catch(() => {});
     abortRef.current?.abort();
   }
 
