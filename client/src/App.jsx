@@ -7,6 +7,7 @@ export default function App() {
   const [status, setStatus] = useState('');
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef(null);
+  const idRef = useRef(null);
 
   useEffect(() => {
     fetch('/api/health')
@@ -18,6 +19,7 @@ export default function App() {
   async function send() {
     const ac = new AbortController();
     abortRef.current = ac;
+    idRef.current = null;
     setOut('');
     setStatus('');
     setStreaming(true);
@@ -39,9 +41,18 @@ export default function App() {
         buffer += decoder.decode(value, { stream: true });
         const events = buffer.split('\n\n');
         buffer = events.pop(); // last piece may be a partial event
-        for (const event of events) {
-          // `event: done` blocks don't start with `data: `, so they are skipped.
-          if (event.startsWith('data: ')) setOut((o) => o + JSON.parse(event.slice(6)).word + ' ');
+        for (const block of events) {
+          let name = 'message';
+          let data = '';
+          for (const line of block.split('\n')) {
+            if (line.startsWith('event: ')) name = line.slice(7);
+            else if (line.startsWith('data: ')) data = line.slice(6);
+          }
+          if (!data) continue;
+          const payload = JSON.parse(data);
+          if (name === 'start') idRef.current = payload.id;
+          else if (name === 'error') throw new Error(payload.error);
+          else if (name === 'message') setOut((o) => o + payload.word + ' ');
         }
       }
       setStatus('done');
@@ -50,6 +61,13 @@ export default function App() {
     } finally {
       setStreaming(false);
     }
+  }
+
+  function stop() {
+    // Tell the server first: behind a proxy, closing our fetch may never reach it.
+    const id = idRef.current;
+    if (id) fetch('/api/streams/' + id + '/cancel', { method: 'POST', keepalive: true }).catch(() => {});
+    abortRef.current?.abort();
   }
 
   return (
@@ -74,7 +92,7 @@ export default function App() {
         </button>
         <button
           className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40"
-          onClick={() => abortRef.current?.abort()}
+          onClick={stop}
           disabled={!streaming}
         >
           Stop

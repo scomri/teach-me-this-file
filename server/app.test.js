@@ -3,12 +3,24 @@ import assert from 'node:assert/strict';
 import { createApp } from './app.js';
 
 // Starts the app on an ephemeral port with a capturing log sink.
-function start(t) {
+function start(t, opts = {}) {
   const lines = [];
-  const server = createApp({ log: (line) => lines.push(line) }).listen(0);
+  const app = createApp({ log: (line) => lines.push(line), ...opts });
+  const server = app.listen(0);
   t.after(() => server.close());
-  return { lines, url: `http://127.0.0.1:${server.address().port}` };
+  return { lines, streams: app.locals.streams, url: `http://127.0.0.1:${server.address().port}` };
 }
+
+// Opens a long stream and returns its id (from the start event) plus the reader.
+async function openStream(url, words = 50, signal) {
+  const res = await post(url, JSON.stringify({ text: Array(words).fill('word').join(' ') }), {}, signal);
+  const reader = res.body.getReader();
+  const { value } = await reader.read();
+  const id = /"id":"([^"]+)"/.exec(new TextDecoder().decode(value))[1];
+  return { id, reader };
+}
+
+const cancel = (url, id, headers = {}) => fetch(`${url}/api/streams/${id}/cancel`, { method: 'POST', headers });
 
 const post = (url, body, headers = {}, signal) =>
   fetch(`${url}/api/echo-stream`, {
@@ -49,7 +61,60 @@ test('echo-stream sends one SSE event per word, then done', async (t) => {
   const body = await res.text();
   const words = [...body.matchAll(/^data: \{"word":"(.+)"\}$/gm)].map((m) => m[1]);
   assert.deepEqual(words, ['hello', 'big', 'world']);
+  assert.match(body, /^event: start\ndata: \{"id":"[0-9a-f-]{36}"\}/);
   assert.match(body, /event: done/);
+});
+
+test('cancelling an active stream returns 204, ends it, logs cancelled and empties the registry', async (t) => {
+  const { url, lines, streams } = start(t);
+  const { id, reader } = await openStream(url);
+  assert.equal(streams.size, 1);
+  assert.equal((await cancel(url, id)).status, 204);
+  for (;;) if ((await reader.read()).done) break; // server ended the response
+  assert.ok(lines.includes('POST /api/echo-stream cancelled'), `got ${lines}`);
+  assert.ok(await waitFor(() => lines.some((l) => l.startsWith('POST /api/streams/') && l.includes(' 204 '))));
+  assert.equal(streams.size, 0);
+  assert.ok(!lines.some((l) => l.includes('aborted')), 'cancel must not also log aborted');
+});
+
+test('cancelling an unknown id or an already finished stream returns 404', async (t) => {
+  const { url } = start(t);
+  assert.equal((await cancel(url, 'nope')).status, 404);
+  const res = await post(url, JSON.stringify({ text: 'hi' }));
+  const id = /"id":"([^"]+)"/.exec(await res.text())[1];
+  assert.equal((await cancel(url, id)).status, 404);
+});
+
+test('the duration cap ends the stream with event: error and logs timeout', async (t) => {
+  const { url, lines, streams } = start(t, { streamMaxMs: 300 });
+  const res = await post(url, JSON.stringify({ text: Array(50).fill('word').join(' ') }));
+  const body = await res.text();
+  assert.match(body, /event: error\ndata: \{"error":"timeout"\}/);
+  assert.ok(lines.includes('POST /api/echo-stream timeout'), `got ${lines}`);
+  assert.equal(streams.size, 0);
+});
+
+test('the registry is empty after a normal finish and after a client disconnect', async (t) => {
+  const { url, lines, streams } = start(t);
+  await (await post(url, JSON.stringify({ text: 'hi' }))).text();
+  assert.equal(streams.size, 0);
+
+  const ac = new AbortController();
+  const { reader } = await openStream(url, 50, ac.signal);
+  assert.equal(streams.size, 1);
+  ac.abort();
+  await reader.read().catch(() => {});
+  assert.ok(await waitFor(() => streams.size === 0 && lines.some((l) => l.includes('aborted'))));
+});
+
+test('the cancel route never logs the X-Api-Key value', async (t) => {
+  const { url, lines } = start(t);
+  const { id, reader } = await openStream(url);
+  await cancel(url, id, { 'X-Api-Key': 'sk-test-123' });
+  await cancel(url, 'nope', { 'X-Api-Key': 'sk-test-123' });
+  for (;;) if ((await reader.read()).done) break;
+  assert.ok(await waitFor(() => lines.filter((l) => l.startsWith('POST /api/streams/')).length === 2));
+  assert.ok(!lines.join('\n').includes('sk-test-123'));
 });
 
 test('echo-stream rejects missing, empty and oversized text with 400', async (t) => {
