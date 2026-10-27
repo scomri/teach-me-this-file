@@ -45,6 +45,16 @@ test('legacy Arabic (windows-1256)', () => {
   assert.equal(decodeText(legacy(arabic, 'windows-1256')), arabic);
 });
 
+test('legacy Hebrew file that is mostly English keeps its Hebrew', () => {
+  const mixed = 'Chapter 1: Introduction to the topic of photosynthesis in plants. Key term: פוטוסינתזה';
+  assert.equal(decodeText(legacy(mixed, 'windows-1255')), mixed);
+});
+
+test('legacy Arabic without a word-initial alef', () => {
+  const text = 'مرحبا من مصر';
+  assert.equal(decodeText(legacy(text, 'windows-1256')), text);
+});
+
 test('legacy Latin (windows-1252) is not mistaken for Hebrew', () => {
   assert.equal(decodeText(legacy(french, 'windows-1252')), french);
 });

@@ -11,28 +11,28 @@ export function decodeText(bytes) {
   }
 }
 
-// ponytail: byte-range heuristic for the three code pages this app's users meet.
-// Other legacy encodings (Cyrillic, Greek…) decode as windows-1252 garbage; add a
-// detector library if real files need them.
+const isAsciiLetter = (b) => b !== undefined && (b | 0x20) >= 0x61 && (b | 0x20) <= 0x7a;
+const count = (text, re) => text.match(re)?.length ?? 0;
+
+// ponytail: heuristic for the three code pages this app's users meet. Other legacy
+// encodings (Cyrillic, Greek…) decode as windows-1252 garbage; add a detector
+// library if real files need them.
 function legacyEncoding(bytes) {
-  let ascii = 0;
+  // Accented Latin letters sit inside ASCII words ("procédé"); Hebrew and Arabic
+  // words are runs of high bytes, even in a mostly English file.
   let high = 0;
-  let startC = 0; // word-initial 0xC0–0xDF: Arabic letters in 1256, Hebrew vowel points in 1255
-  let startE = 0; // word-initial 0xE0–0xFA: Hebrew letters in 1255
+  let inLatinWord = 0;
   for (let i = 0; i < bytes.length; i++) {
-    const b = bytes[i];
-    if (b < 0x80) {
-      if ((b | 0x20) >= 0x61 && (b | 0x20) <= 0x7a) ascii++;
-      continue;
-    }
+    if (bytes[i] < 0x80) continue;
     high++;
-    const prev = i ? bytes[i - 1] : 0x20;
-    const wordStart = prev < 0x80 && !/[0-9A-Za-z]/.test(String.fromCharCode(prev));
-    if (!wordStart) continue;
-    if (b >= 0xc0 && b <= 0xdf) startC++;
-    else if (b >= 0xe0 && b <= 0xfa) startE++;
+    if (isAsciiLetter(bytes[i - 1]) || isAsciiLetter(bytes[i + 1])) inLatinWord++;
   }
-  if (high < 0.3 * (ascii + high)) return 'windows-1252';
-  // Vowel points never start a Hebrew word, but Arabic words often start with alef (0xC7).
-  return startC > 0.3 * (startC + startE) ? 'windows-1256' : 'windows-1255';
+  if (inLatinWord > high / 2) return 'windows-1252';
+
+  // Hebrew or Arabic: Arabic text hits bytes windows-1255 leaves undefined (ع ف ق ك);
+  // otherwise the code page whose script block covers more of the text wins.
+  const he = new TextDecoder('windows-1255').decode(bytes);
+  const ar = new TextDecoder('windows-1256').decode(bytes);
+  const heScore = he.includes('�') ? -1 : count(he, /[֑-״]/g);
+  return count(ar, /[؀-ۿ]/g) >= heScore ? 'windows-1256' : 'windows-1255';
 }

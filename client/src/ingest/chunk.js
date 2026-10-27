@@ -3,6 +3,7 @@
 export const CHUNK_CHARS = 1500;
 
 const HEADING = /^#{1,6}\s+(.+)/; // Markdown heading; the DOCX reader emits the same form
+const FENCE = /^\s*(```|~~~)/;
 const SENTENCE_END = /[.!?׃…](?=\s)|\n/g;
 
 export function normalize(text) {
@@ -23,7 +24,7 @@ function splitLong(s, max) {
     let cut = -1;
     for (const m of win.matchAll(SENTENCE_END)) if (m.index < max && m.index >= max / 2) cut = m.index + 1;
     if (cut < 0) for (const m of win.matchAll(/\s/g)) if (m.index > 0) cut = m.index;
-    if (cut < 0) cut = max;
+    if (cut < 0) cut = /[\uD800-\uDBFF]/.test(s[max - 1]) ? max - 1 : max; // keep surrogate pairs whole
     out.push(s.slice(0, cut).trim());
     s = s.slice(cut).trim();
   }
@@ -31,8 +32,42 @@ function splitLong(s, max) {
   return out;
 }
 
-// pages: [{ page, pageLabel, heading, text }]. Chunks never cross pages; each carries
-// the heading in effect at its first paragraph. Every page is kept: the size limit
+// Splits text at blank lines and before every heading line (outside code fences).
+// A heading stays with the body that follows it; `heading` is set on the paragraph it opens.
+function paragraphs(text) {
+  const out = [];
+  let lines = [];
+  let heading = null;
+  let body = 0;
+  let fence = false;
+  const flush = () => {
+    if (lines.length) out.push({ text: lines.join('\n').trim(), heading });
+    lines = [];
+    heading = null;
+    body = 0;
+  };
+  for (const line of text.split('\n')) {
+    if (FENCE.test(line)) fence = !fence;
+    const h = fence ? null : HEADING.exec(line);
+    if (h) {
+      if (body) flush();
+      heading = h[1].trim();
+      lines.push(line);
+    } else if (!line) {
+      if (body) flush();
+      else if (lines.length) lines.push(''); // blank line between a heading and its body
+    } else {
+      lines.push(line);
+      body++;
+    }
+  }
+  flush();
+  return out;
+}
+
+// pages: [{ page, pageLabel, heading, text }]. Chunks never cross pages, and every
+// heading starts a new chunk; each chunk carries the heading in effect at its start.
+// Every page is kept: the size limit
 // applies when the plan request is built, not here.
 export function chunkPages(pages, { max = CHUNK_CHARS } = {}) {
   const chunks = [];
@@ -53,10 +88,12 @@ export function chunkPages(pages, { max = CHUNK_CHARS } = {}) {
       buf = '';
     };
 
-    for (const para of text.split(/\n{2,}/)) {
-      const h = HEADING.exec(para);
-      if (h) heading = h[1].trim();
-      for (const piece of splitLong(para, max)) {
+    for (const para of paragraphs(text)) {
+      if (para.heading) {
+        flush();
+        heading = para.heading;
+      }
+      for (const piece of splitLong(para.text, max)) {
         if (buf && buf.length + 2 + piece.length <= max) {
           buf += `\n\n${piece}`;
         } else {

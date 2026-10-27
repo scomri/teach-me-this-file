@@ -57,13 +57,36 @@ test('chunks never cross pages and keep page and label', () => {
   assert.equal(totalPages, 2);
 });
 
-test('each chunk gets the heading in effect at its first paragraph', () => {
+test('a heading starts a new chunk, and later chunks carry it', () => {
+  const words = 'word '.repeat(200).trim();
   const { chunks } = chunkPages([
-    page(`intro\n\n# Photosynthesis\n\n${para(1490)}\n\n## Light reactions\n\nmore`, { heading: 'Slide title' }),
+    page(`intro\n\n# Photosynthesis\n\n${words}\n\n## Light reactions\n\nmore`, { heading: 'Slide title' }),
     page('next page', { heading: null }),
   ]);
   assert.deepEqual(chunks.map((c) => c.heading), ['Slide title', 'Photosynthesis', 'Light reactions', 'Light reactions']);
-  assert.equal(chunks[0].text, 'intro\n\n# Photosynthesis');
+  assert.deepEqual(chunks.slice(0, 3).map((c) => c.text), [
+    'intro',
+    `# Photosynthesis\n\n${words}`,
+    '## Light reactions\n\nmore',
+  ]);
+});
+
+test('a heading line is found without a blank line before it', () => {
+  const { chunks } = chunkPages([page('intro\n# Cells\ntext')]);
+  assert.deepEqual(chunks.map((c) => [c.heading, c.text]), [[null, 'intro'], ['Cells', '# Cells\ntext']]);
+});
+
+test('# lines inside a code fence are not headings', () => {
+  const { chunks } = chunkPages([page('```\n# not a heading\n```')]);
+  assert.equal(chunks[0].heading, null);
+});
+
+test('a hard cut never splits an emoji', () => {
+  const text = `a${'😀'.repeat(1000)}`; // odd offset, so a cut at 1,500 lands inside a pair
+  const { chunks } = chunkPages([page(text)]);
+  assert.ok(chunks.length > 1);
+  assert.ok(chunks.every((c) => c.text.isWellFormed()));
+  assert.equal(chunks.map((c) => c.text).join(''), text);
 });
 
 test('a page heading replaces the carried one', () => {

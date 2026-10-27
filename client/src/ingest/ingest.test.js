@@ -13,7 +13,7 @@ test('reads a Markdown file into chunks with headings', async () => {
   const r = await ingestFile(file('# Cells\n\nCells are small.\n\n## Nucleus\n\nIt holds DNA.', 'Notes.MD'));
   assert.equal(r.name, 'Notes.MD');
   assert.equal(r.kind, 'md');
-  assert.deepEqual(r.chunks.map((c) => [c.id, c.page, c.heading]), [['c1', null, 'Cells']]);
+  assert.deepEqual(r.chunks.map((c) => [c.id, c.page, c.heading]), [['c1', null, 'Cells'], ['c2', null, 'Nucleus']]);
   assert.deepEqual(r.skippedPages, []);
 });
 

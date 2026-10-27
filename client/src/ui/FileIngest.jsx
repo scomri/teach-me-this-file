@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ACCEPTED, ingestFile } from '../ingest/ingest.js';
+import { ACCEPTED, IngestError, ingestFile } from '../ingest/ingest.js';
 import { detectScript } from '../ingest/script.js';
 import { MAX_FILE_MB } from '../../../shared/limits.js';
 
@@ -23,7 +23,7 @@ export default function FileIngest() {
       const doc = await ingestFile(file);
       setState({ status: 'done', doc, ms: Math.round(performance.now() - t0) });
     } catch (err) {
-      setState({ status: 'error', message: err.code ? err.message : "This file couldn't be read." });
+      setState({ status: 'error', message: err instanceof IngestError ? err.message : "This file couldn't be read." });
     }
   }
 
