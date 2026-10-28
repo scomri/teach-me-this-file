@@ -65,17 +65,26 @@ function shapes(tree, out) {
   }
 }
 
-// Notes pages also hold a slide thumbnail and a number; only the body is speaker text.
+// Notes pages also hold a slide thumbnail and a number; speaker text is the body placeholder,
+// which some producers write without a type (only an idx).
 function notesText(doc) {
   return find(doc.documentElement, 'sp')
-    .filter((sp) => placeholder(sp) === 'body')
+    .filter((sp) => [null, 'body'].includes(placeholder(sp)) && find(sp, 'ph').length)
     .flatMap(paragraphs)
     .join('\n');
 }
 
 const dirOf = (path) => path.slice(0, path.lastIndexOf('/') + 1);
 // Rels targets are relative to the part's folder, or absolute from the package root.
-const resolve = (from, target) => new URL(target, `http://x/${from}`).pathname.slice(1);
+// Targets are URL-encoded (a space is %20) but zip entry names are not.
+const resolve = (from, target) => {
+  const path = new URL(target, `http://x/${from}`).pathname.slice(1);
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
 
 export async function readPptx(file, { DOMParser: Parser = globalThis.DOMParser } = {}) {
   const { default: JSZip } = await import('jszip');
@@ -111,7 +120,11 @@ export async function readPptx(file, { DOMParser: Parser = globalThis.DOMParser 
   for (const [i, id] of ids.entries()) {
     const part = slideFiles.get(id);
     const doc = part && (await xml(part));
-    if (!doc) throw BAD();
+    // A dangling slide (hidden or deleted in the editor) costs only itself.
+    if (!doc) {
+      skippedPages.push(i + 1);
+      continue;
+    }
     const out = { title: null, blocks: [] };
     const tree = find(doc.documentElement, 'spTree')[0];
     if (tree) shapes(tree, out);
@@ -122,5 +135,5 @@ export async function readPptx(file, { DOMParser: Parser = globalThis.DOMParser 
     if ((text.match(/\p{L}/gu) ?? []).length < MIN_LETTERS) skippedPages.push(i + 1);
     else pages.push({ page: i + 1, pageLabel: null, heading: out.title, text });
   }
-  return { pages, skippedPages };
+  return { pages, skippedPages, totalPages: ids.length };
 }

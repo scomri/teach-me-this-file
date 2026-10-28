@@ -70,3 +70,41 @@ test('a deck with no text is empty', async () => {
   const file = new File([await zip.generateAsync({ type: 'nodebuffer' })], 'blank.pptx');
   await assert.rejects(ingestFile(file), (e) => e instanceof IngestError && e.code === 'empty');
 });
+
+// A copy of the fixture with some parts edited.
+async function edited(edit) {
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(bytes);
+  await edit(zip, async (path, fn) => zip.file(path, fn(await zip.file(path).async('string'))));
+  return new File([await zip.generateAsync({ type: 'nodebuffer' })], 'edited.pptx');
+}
+
+test('speaker notes in a placeholder with no type are kept', async () => {
+  const file = await edited((_, change) => change('ppt/notesSlides/notesSlide1.xml', (x) => x.replace('<p:ph type="body"/>', '<p:ph idx="1"/>')));
+  const { pages } = await readPptx(file, { DOMParser });
+  assert.match(pages[0].text, /Notes:\nRemind the class that chlorophyll is green/);
+  assert.ok(!pages[0].text.includes('3'), 'the slide-number placeholder is still ignored');
+});
+
+test('a slide whose part is missing is skipped, not fatal', async () => {
+  const file = await edited((zip) => zip.remove('ppt/slides/slide2.xml'));
+  const r = await readPptx(file, { DOMParser });
+  assert.deepEqual(r.skippedPages, [2, 3]);
+  assert.deepEqual(r.pages.map((p) => p.page), [1]);
+});
+
+test('percent-encoded rel targets find the slide', async () => {
+  const file = await edited(async (zip, change) => {
+    const text = await zip.file('ppt/slides/slide2.xml').async('string');
+    zip.remove('ppt/slides/slide2.xml');
+    zip.file('ppt/slides/my slide.xml', text);
+    await change('ppt/_rels/presentation.xml.rels', (x) => x.replace('slides/slide2.xml', 'slides/my%20slide.xml'));
+  });
+  const { pages } = await readPptx(file, { DOMParser });
+  assert.deepEqual(pages.map((p) => p.page), [1, 3]);
+});
+
+test('the slide total includes skipped slides', async () => {
+  globalThis.DOMParser = DOMParser;
+  assert.equal((await ingestFile(pptx())).totalPages, 3);
+});

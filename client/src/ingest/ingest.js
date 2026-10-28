@@ -45,8 +45,9 @@ export async function ingestFile(file) {
   }
   if (!file.size) throw new IngestError('empty', 'This file is empty.');
 
-  const { pages, skippedPages = [] } = await read(file);
+  // totalPages: a reader that drops unreadable pages reports the full count itself.
+  const { pages, skippedPages = [], totalPages } = await read(file);
   const result = chunkPages(pages);
   if (!result.chunks.length) throw new IngestError('empty', 'This file has no text to teach from.');
-  return { name: file.name, kind: ext, ...result, skippedPages };
+  return { name: file.name, kind: ext, ...result, totalPages: totalPages ?? result.totalPages, skippedPages };
 }
