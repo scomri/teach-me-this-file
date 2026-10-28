@@ -3,14 +3,10 @@
 import { MAX_FILE_BYTES, MAX_FILE_MB } from '../../../shared/limits.js';
 import { chunkPages } from './chunk.js';
 import { decodeText } from './decode.js';
+import { IngestError } from './errors.js';
 import { readPdf } from './pdf.js';
 
-export class IngestError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
+export { IngestError };
 
 async function readText(file) {
   const text = decodeText(new Uint8Array(await file.arrayBuffer()));

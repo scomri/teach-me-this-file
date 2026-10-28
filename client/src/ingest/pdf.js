@@ -1,6 +1,6 @@
 // PDF reader: pdf.js text items in, pages of logical-order text out. pdf.js itself is
 // loaded only when a PDF is read; the line logic below is pure and unit-tested.
-import { IngestError } from './ingest.js';
+import { IngestError } from './errors.js';
 
 const RTL = /[\p{Script=Hebrew}\p{Script=Arabic}]/u;
 const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{' }; // brackets only: < and > are also comparison signs
