@@ -23,7 +23,8 @@ const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
 
-// options: { onProgress({ page, total }) } for readers with pages.
+// options go to the reader: onProgress({ page, total }) for readers with pages, and pdfjs
+// to pass a pdf.js build (tests use the Node one).
 export async function ingestFile(file, options = {}) {
   const dot = file.name.lastIndexOf('.');
   const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : '';

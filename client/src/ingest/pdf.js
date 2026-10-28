@@ -3,10 +3,10 @@
 import { IngestError } from './ingest.js';
 
 const RTL = /[\p{Script=Hebrew}\p{Script=Arabic}]/u;
-const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<' };
+const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{' }; // brackets only: < and > are also comparison signs
 const EDGE = 2; // lines at the top and at the bottom of a page that may be header or footer
 const LIST_MARK = /^\s*[,;:]\s*$/;
-const NUMBER_ONLY =/^[\s\p{P}]*\d+[\s\p{P}]*$/u;
+const NUMBER_ONLY = /^[\s\p{P}]*\d+[\s\p{P}]*$/u;
 
 const x = (it) => it.transform[4];
 const y = (it) => it.transform[5];
@@ -74,7 +74,7 @@ function rtlLineText(items) {
   const ordered = rising > (items.length - 1) / 2 ? displayToReading(items) : items;
   const text = join(ordered);
   if (balanced(text)) return text;
-  const mirrored = join(ordered.map((it) => (!RTL.test(it.str) && /^[()[\]{}<>\s]+$/.test(it.str) ? flip(it) : it)));
+  const mirrored = join(ordered.map((it) => (!RTL.test(it.str) && /^[()[\]{}\s]+$/.test(it.str) ? flip(it) : it)));
   return balanced(mirrored) ? mirrored : text;
 }
 

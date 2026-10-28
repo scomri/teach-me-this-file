@@ -100,6 +100,11 @@ test('brackets drawn mirrored in reading order are swapped back only when that b
   assert.equal(gs.text, 'בשנת (1996)');
   const [list] = joinItems([item('א', 340, 700, 6), item(')', 337, 700, 3), item('מצאו', 300, 700, 25)]);
   assert.equal(list.text, 'א) מצאו'); // one bracket: nothing to balance, left alone
+  // A comparison sign is not a bracket: it keeps its meaning when the brackets are swapped.
+  const [cmp] = joinItems([
+    item('אם', 340, 700, 12), item(')', 322, 700, 3), item('x', 316, 700, 6), item('>', 302, 700, 6), item('3', 290, 700, 6), item('(', 287, 700, 3),
+  ]);
+  assert.equal(cmp.text, 'אם (x > 3)');
 });
 
 test('a formula inside a right-to-left line reads left to right', () => {
