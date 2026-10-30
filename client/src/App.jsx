@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
 
 export default function App() {
@@ -83,6 +84,7 @@ export default function App() {
   return (
     <main className="mx-auto max-w-xl p-8">
       <h1 className="text-2xl font-semibold">Teach Me This File</h1>
+      <ModelSettings />
       <p className="mt-2 text-slate-600">API: {api}</p>
 
       <FileIngest />

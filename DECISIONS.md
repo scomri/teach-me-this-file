@@ -14,7 +14,7 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | Area | Decision | Why |
 |---|---|---|
 | Architecture | Layers: `ai/` (server: provider adapter, prompts, output validation), `lesson/` (pure JS state machine), `ui/` (React). File reading sits in `ingest/` (pure, in the browser). | Separation the brief asks for. Lesson and ingestion logic are testable without React or network. |
-| Lesson state | Client owns plan and progress, saved in IndexedDB. Server is stateless. API key never saved. | Survives refreshes and free-tier cold starts. |
+| Lesson state | Client owns plan and progress, saved in IndexedDB. Server is stateless. API key stays in memory by default, with opt-in tab storage. | Survives refreshes and free-tier cold starts. |
 | Tutor loop | Per student message: a small JSON evaluation call (`correct`, `partial`, `wrong`, `asks_for_answer`, `off_topic`, `question`), code picks the transition, then a streamed teaching reply. | The model proposes, code decides. One call with a JSON header was brittle across providers. |
 | Teaching policy | Reveal after two failed attempts. "Just tell me" gets one scaffold first. Off-topic doesn't count as an attempt. End recap: mastered vs revealed. | Baseline, tuned during build. |
 | Grounding | Every message teaches from chunks of the source (see Chunks below). Citations are the evaluator's chunk ids, checked against the current step. | No invented citations. The UI can show the source passage. |
@@ -53,3 +53,26 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 - **Groq preset:** its free tier allows about 6-8k tokens per minute. A single tutoring turn in Hebrew (two calls, each carrying the step's source passages) is already near that, and a plan request for a normal document exceeds it. Gemini's free tier covers the free option.
 - **OpenRouter free models (`:free`):** an account that has never bought credits gets 50 requests a day, and one lesson takes about 40, so a retry or a second lesson fails. The free model list also changes often. The OpenRouter preset defaults to paid Gemini routes, which were tested; the free models were not.
 - **Accounts, database, multiple files, voice, teacher analytics:** out of scope. So teacher and student share one browser session; a lesson can't move to a student's device.
+
+## Model connection (built)
+
+The native Settings dialog checks evaluator and teacher models through one server-side chat-completions adapter. Public preset names, default model ids and key links are shared; destinations and request differences remain on the server. Requests use native `fetch`, `max_completion_tokens`, no `top_p`, and omit temperature for OpenAI and Anthropic. No new dependency was needed. [ADR 0002](docs/adr/0002-model-connection.md) records the adapter and credential-storage choices.
+
+The key stays in memory unless the user explicitly enables tab storage. Turning that option off removes the saved key immediately. A blocked storage API degrades to memory with a visible warning. The check route validates the preset and model fields, limits the whole check to ten seconds, aborts on disconnect, refuses redirects, and returns fixed outcomes without provider response text. A temporary evaluator failure does not hide a missing teacher model. An unreachable model takes precedence over rate limits in either role. A 400 whose error text names an unknown or invalid model also counts as a missing model, because some providers (OpenRouter) answer a mistyped model id with 400 rather than 404; the text is matched on the server and discarded. A malformed check request gets `invalid_request` and blocks Save. Storage read failures are explained inside Settings when it opens.
+
+Verification: HTTP tests cover success, 401/403, role-specific 404, 429, network failures, timeout, invalid inputs, blank defaults and key-free logs. Outgoing request tests cover all four fixed destinations and parameter differences. Persistence tests cover default memory-only behavior, opt-in reload, opt-out deletion, corrupt stored data and unavailable storage. The deployed real-key check has not been run for this change; it requires deployment and provider credentials.
+
+Known weaknesses: tab storage is accessible to same-origin JavaScript, including injected scripts. The 400 model match is a text heuristic and has not been confirmed against every provider with real keys. Saved status is the last check result and can become stale; warnings remain visible after saving. Model availability and compatibility differ by account and may change; Anthropic's compatibility endpoint remains a testing-oriented choice. With four more hours, validate the deployed flow with each provider and add automated real-browser dialog regressions.
+
+
+### Model connection scenarios
+
+| Scenario | Result |
+|---|---|
+| First visit, memory-only save, reload | Dialog opens empty again; no key persisted. Passed in browser. |
+| Remember for this tab, reload, then opt out | Reload restores settings without opening; opt-out and reload require a key again. Passed in browser. |
+| Invalid key and missing teacher model | Field error shown; Save blocked until edited. Passed with stub provider in browser. |
+| Rate limit or unreachable provider | Settings save and the warning remains visible after dialog closes. Passed with stub provider in browser. |
+| Keyboard and small screen | Focus wraps in both directions with Save enabled or disabled; Escape returns focus to the pill; 375px layout fits. Passed in browser. |
+
+The browser checks use a local stub provider, not real keys. They also confirmed preset model prefill, key visibility toggling and no browser error/warning logs.
