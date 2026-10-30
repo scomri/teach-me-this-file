@@ -1,6 +1,7 @@
 // PDF reader: pdf.js text items in, pages of logical-order text out. pdf.js itself is
 // loaded only when a PDF is read; the line logic below is pure and unit-tested.
 import { IngestError } from './errors.js';
+import { unreadable } from './unreadable.js';
 
 const RTL = /[\p{Script=Hebrew}\p{Script=Arabic}]/u;
 const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{' }; // brackets only: < and > are also comparison signs
@@ -136,15 +137,6 @@ export function printedLabels(pages) {
   const [offset, best] = [...votes].reduce((a, b) => (b[1].count > a[1].count ? b : a), [0, { count: 0 }]);
   if (best.count < pages.length * 0.6) return null;
   return pages.map((_, i) => (i >= best.first ? String(i + 1 + offset) : null));
-}
-
-// No usable text layer: fewer than 20 letters (a scan, a figure), or more than 20% of the
-// characters broken (a font without a usable character map).
-export function unreadable(text) {
-  const chars = text.replace(/\s/g, '');
-  const letters = chars.match(/\p{L}/gu)?.length ?? 0;
-  const broken = chars.match(/[�\p{Co}\p{Cc}]/gu)?.length ?? 0;
-  return letters < 20 || broken > chars.length * 0.2;
 }
 
 async function open(pdfjs, data) {

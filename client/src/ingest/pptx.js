@@ -3,11 +3,9 @@
 // `cell | cell` rows, and the speaker notes under a `Notes:` line. jszip is loaded
 // on demand, so it stays out of the main bundle.
 import { IngestError } from './errors.js';
+import { unreadable } from './unreadable.js';
 
 const BAD = () => new IngestError('unreadable', "This file isn't a valid PowerPoint presentation.");
-// Slides with fewer letters than this (pictures only) are listed as skipped.
-// ponytail: same rule as the PDF reader's unreadable pages; share one constant once both are merged.
-const MIN_LETTERS = 20;
 // Slide furniture that repeats on every slide and says nothing.
 const FURNITURE = new Set(['sldNum', 'dt', 'ftr', 'hdr']);
 const TITLE = new Set(['title', 'ctrTitle']);
@@ -132,7 +130,7 @@ export async function readPptx(file, { DOMParser: Parser = globalThis.DOMParser 
     const notesDoc = notesPart && (await xml(notesPart));
     const notes = notesDoc ? notesText(notesDoc) : '';
     const text = [out.title && `# ${out.title}`, ...out.blocks, notes && `Notes:\n${notes}`].filter(Boolean).join('\n\n');
-    if ((text.match(/\p{L}/gu) ?? []).length < MIN_LETTERS) skippedPages.push(i + 1);
+    if (unreadable(text)) skippedPages.push(i + 1); // picture-only or broken slide
     else pages.push({ page: i + 1, pageLabel: null, heading: out.title, text });
   }
   return { pages, skippedPages, totalPages: ids.length };
