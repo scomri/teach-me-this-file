@@ -3,13 +3,10 @@
 import { MAX_FILE_BYTES, MAX_FILE_MB } from '../../../shared/limits.js';
 import { chunkPages } from './chunk.js';
 import { decodeText } from './decode.js';
+import { IngestError } from './errors.js';
+import { readPdf } from './pdf.js';
 
-export class IngestError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
+export { IngestError };
 
 async function readText(file) {
   const text = decodeText(new Uint8Array(await file.arrayBuffer()));
@@ -20,12 +17,14 @@ async function readText(file) {
 // docx loads on demand: mammoth is large and most files are not Word.
 const readDocx = async (file) => (await import('./docx.js')).readDocx(file);
 
-const READERS = { docx: readDocx, txt: readText, md: readText };
+const READERS = { pdf: readPdf, docx: readDocx, txt: readText, md: readText };
 const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
 
-export async function ingestFile(file) {
+// options go to the reader: onProgress({ page, total }) for readers with pages, and pdfjs
+// to pass a pdf.js build (tests use the Node one).
+export async function ingestFile(file, options = {}) {
   const dot = file.name.lastIndexOf('.');
   const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : '';
   const read = READERS[ext];
@@ -42,8 +41,9 @@ export async function ingestFile(file) {
   }
   if (!file.size) throw new IngestError('empty', 'This file is empty.');
 
-  const { pages, skippedPages = [] } = await read(file);
+  const { pages, skippedPages = [] } = await read(file, options);
   const result = chunkPages(pages);
   if (!result.chunks.length) throw new IngestError('empty', 'This file has no text to teach from.');
-  return { name: file.name, kind: ext, ...result, skippedPages };
+  const totalPages = result.totalPages && result.totalPages + skippedPages.length;
+  return { name: file.name, kind: ext, ...result, totalPages, skippedPages };
 }

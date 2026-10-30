@@ -1,7 +1,7 @@
 // DOCX reader: mammoth turns the file into HTML (loaded on demand, so it stays
 // out of the main bundle), then dom-text keeps headings, lists and tables.
 import { htmlToText } from './dom-text.js';
-import { IngestError } from './ingest.js';
+import { IngestError } from './errors.js';
 
 // Tests pass linkedom's parser; the browser has its own.
 export async function readDocx(file, { DOMParser: Parser = globalThis.DOMParser } = {}) {
