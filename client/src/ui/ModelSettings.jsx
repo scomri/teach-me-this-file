@@ -83,7 +83,7 @@ export default function ModelSettings() {
       return;
     }
     if (result.code === 'model_not_found') {
-      setError({field:result.role === 'teacher' ? 'teacher' : 'evaluator',message:'This model was not found. Edit it and try again.'}); return;
+      setError({field:result.role === 'teacher' ? 'teacher' : 'evaluator',message:'This model was not found or isn’t available for this request. Edit it and try again.'}); return;
     }
     if (result.code === 'invalid_request') {
       setError({field:null,message:'The server rejected these settings. Reload the page and try again.'}); return;
