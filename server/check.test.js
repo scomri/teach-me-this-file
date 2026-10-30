@@ -88,3 +88,11 @@ test('a 400 naming an unknown model is model_not_found; other 400s stay unreacha
   assert.ok(!JSON.stringify(body).includes('typo'));
  }
 });
+
+test('a 400 rejecting the API key is invalid_key (Gemini)', async (t) => {
+ const text = '[{"error":{"code":400,"message":"Please pass a valid API key","status":"INVALID_ARGUMENT"}}]';
+ const app = createApp({log:()=>{},providerFetch:async()=>new Response(text,{status:400})});
+ const server = app.listen(0); t.after(()=>server.close());
+ const res = await fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':'fake-key'},body:'{"preset":"gemini"}'});
+ assert.deepEqual(await res.json(),{code:'invalid_key'});
+});
