@@ -184,7 +184,7 @@ export async function readPdf(file, { onProgress, pdfjs } = {}) {
     if (!pages.length) {
       throw new IngestError('no_text', 'This PDF has no readable text; it looks scanned. Support for scanned pages is planned.');
     }
-    return { pages, skippedPages };
+    return { pages, skippedPages, totalPages: total };
   } finally {
     doc.loadingTask.destroy();
   }

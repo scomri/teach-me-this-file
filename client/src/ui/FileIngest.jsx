@@ -5,8 +5,10 @@ import { MAX_FILE_MB } from '../../../shared/limits.js';
 
 const SHOWN = 200; // ponytail: dev view; a 20 MB file has ~14k chunks, too many to render at once
 
-function where(c) {
-  const page = c.page == null ? null : `page ${c.pageLabel ?? c.page}`;
+const unit = (kind) => (kind === 'pptx' ? 'slide' : 'page');
+
+function where(c, kind) {
+  const page = c.page == null ? null : `${unit(kind)} ${c.pageLabel ?? c.page}`;
   return [c.id, page, c.heading].filter(Boolean).join(' · ');
 }
 
@@ -53,10 +55,10 @@ export default function FileIngest() {
             <p>
               <span className="font-medium">{doc.name}</span>: {doc.chunks.length.toLocaleString()} chunks,{' '}
               {doc.totalChars.toLocaleString()} characters
-              {doc.totalPages && `, ${doc.totalPages} pages`} <span className="text-slate-500">({state.ms} ms)</span>
+              {doc.totalPages && `, ${doc.totalPages} ${unit(doc.kind)}s`} <span className="text-slate-500">({state.ms} ms)</span>
             </p>
             {doc.skippedPages.length > 0 && (
-              <p className="mt-2 text-slate-600">No readable text on pages {doc.skippedPages.join(', ')}.</p>
+              <p className="mt-2 text-slate-600">No readable text on {unit(doc.kind)}s {doc.skippedPages.join(', ')}.</p>
             )}
           </div>
         )}
@@ -70,7 +72,7 @@ export default function FileIngest() {
           <ol className="mt-2 space-y-2">
             {doc.chunks.slice(0, SHOWN).map((c) => (
               <li key={c.id} className="rounded border border-slate-200 p-2">
-                <p className="text-xs text-slate-500">{where(c)}</p>
+                <p className="text-xs text-slate-500">{where(c, doc.kind)}</p>
                 <p className="mt-1 whitespace-pre-wrap text-sm" dir={detectScript(c.text).rtl ? 'rtl' : 'ltr'}>
                   {c.text}
                 </p>

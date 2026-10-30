@@ -17,7 +17,10 @@ async function readText(file) {
 // docx loads on demand: mammoth is large and most files are not Word.
 const readDocx = async (file) => (await import('./docx.js')).readDocx(file);
 
-const READERS = { pdf: readPdf, docx: readDocx, txt: readText, md: readText };
+// pptx likewise: jszip is only needed for slides.
+const readPptx = async (file) => (await import('./pptx.js')).readPptx(file);
+
+const READERS = { pdf: readPdf, docx: readDocx, pptx: readPptx, txt: readText, md: readText };
 const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
@@ -41,9 +44,9 @@ export async function ingestFile(file, options = {}) {
   }
   if (!file.size) throw new IngestError('empty', 'This file is empty.');
 
-  const { pages, skippedPages = [] } = await read(file, options);
+  // totalPages is whatever the reader reports (PDF, PPTX); formats without pages report none.
+  const { pages, skippedPages = [], totalPages = null } = await read(file, options);
   const result = chunkPages(pages);
   if (!result.chunks.length) throw new IngestError('empty', 'This file has no text to teach from.');
-  const totalPages = result.totalPages && result.totalPages + skippedPages.length;
   return { name: file.name, kind: ext, ...result, totalPages, skippedPages };
 }

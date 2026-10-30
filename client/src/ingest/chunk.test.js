@@ -43,7 +43,7 @@ test('splits at whitespace when there is no sentence end, then hard', () => {
 });
 
 test('chunks never cross pages and keep page and label', () => {
-  const { chunks, totalPages } = chunkPages([
+  const { chunks } = chunkPages([
     page('one', { page: 1, pageLabel: 'i' }),
     page('two', { page: 2, pageLabel: '1' }),
   ]);
@@ -54,7 +54,6 @@ test('chunks never cross pages and keep page and label', () => {
       { id: 'c2', page: 2, pageLabel: '1', text: 'two' },
     ],
   );
-  assert.equal(totalPages, 2);
 });
 
 test('a heading starts a new chunk, and later chunks carry it', () => {
@@ -105,14 +104,10 @@ test('drops empty pages and whitespace-only paragraphs, ids stay sequential', ()
   assert.equal(chunks[0].text, 'a\n\nb');
 });
 
-test('keeps every page and reports totals', () => {
+test('keeps every page and reports the character total', () => {
   const pages = [1, 2, 3].map((n) => page(`${para(1400)}\n\n${para(1400)}`, { page: n }));
   const r = chunkPages(pages);
   assert.equal(r.chunks.length, 6);
   assert.equal(r.totalChars, 3 * (2800 + 2));
-  assert.equal(r.totalPages, 3);
 });
 
-test('text files report a null page count', () => {
-  assert.equal(chunkPages([page('hello')]).totalPages, null);
-});

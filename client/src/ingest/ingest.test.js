@@ -26,7 +26,7 @@ test('reads a PDF into chunks with page positions, printed labels and skipped pa
   const r = await ingestFile(book, { pdfjs, onProgress: (p) => pages.push(p.page) });
   assert.equal(r.kind, 'pdf');
   assert.deepEqual(r.chunks.map((c) => [c.id, c.page, c.pageLabel]), [['c1', 1, '37'], ['c2', 2, '38'], ['c3', 4, '40']]);
-  assert.equal(r.totalPages, 4); // skipped pages count too
+  assert.equal(r.totalPages, 4); // the reader reports the whole document, skipped pages included
   assert.deepEqual(r.skippedPages, [3]);
   assert.deepEqual(pages, [1, 2, 3, 4]);
 });
@@ -50,4 +50,8 @@ test('named errors', async () => {
 
 test('legacy formats are told to save as a supported type', async () => {
   await assert.rejects(ingestFile(file('x', 'old.doc')), /save it as PDF, DOCX or PPTX/i);
+});
+
+test('formats without pages report no page count', async () => {
+  assert.equal((await ingestFile(file('hello world', 'a.txt'))).totalPages, null);
 });
