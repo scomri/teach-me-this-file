@@ -59,7 +59,7 @@ Key design rules:
 
 ## API key rule (hard constraint)
 
-The reviewer's API key goes from a settings field to the server in an `X-Api-Key` header on each request. It is never stored server-side, never logged (redact the header in request logs), never committed. Optional: fall back to a host environment variable. `.env` must be in `.gitignore`. Run a secret scan before pushing.
+The reviewer's API key goes from a settings field to the server in an `X-Api-Key` header on each request. It is never stored server-side, never logged (redact the header in request logs), never committed. `.env` must be in `.gitignore`. Run a secret scan before pushing.
 
 ## Ingestion scope
 
