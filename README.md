@@ -2,6 +2,10 @@
 
 Upload a document and get a short, interactive tutoring lesson on it.
 
+## API key
+
+The app runs on your own key, entered in Settings and kept in the browser; the server never stores it. Presets: Gemini (default), OpenRouter, OpenAI, Anthropic. Without paid credits, use a free Gemini key from Google AI Studio. OpenRouter's free models are not supported (see `DECISIONS.md`).
+
 ## Run locally
 
 Requires Node 24.

@@ -51,6 +51,7 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 - **Free-text provider URL:** SSRF risk on Cloud Run's metadata server. URLs are hardcoded presets.
 - **Fallback key from the host environment:** anyone on the public URL would spend the owner's quota.
 - **Groq preset:** its free tier allows about 6-8k tokens per minute. A single tutoring turn in Hebrew (two calls, each carrying the step's source passages) is already near that, and a plan request for a normal document exceeds it. Gemini's free tier covers the free option.
+- **OpenRouter free models (`:free`):** an account that has never bought credits gets 50 requests a day, and one lesson takes about 40, so a retry or a second lesson fails. The free model list also changes often. The OpenRouter preset defaults to paid Gemini routes, which were tested; the free models were not.
 - **Accounts, database, multiple files, voice, teacher analytics:** out of scope. So teacher and student share one browser session; a lesson can't move to a student's device.
 
 ## Model connection (built)
