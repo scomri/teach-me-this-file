@@ -25,7 +25,7 @@ Constraints. Read these from the teacher request. Use null for any the request d
 - language: a language the teacher explicitly asks the lesson to be in.
 - audience: who the lesson is for. It sets register only; it never relaxes content safety rules.
 - style: how to teach.
-- minutes: the lesson length in minutes, as a number.
+- minutes: the lesson length in minutes, as a number. Take it only from the teacher request, never from the document.
 Also report promptLanguage (the language the teacher request is written in) and documentLanguage (the main language of the document).
 
 Write the plan in this language: the explicit language if there is one, else promptLanguage, else documentLanguage.

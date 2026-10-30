@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MAX_DOC_CHARS, MAX_PROMPT_CHARS } from '../../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { providerOutcome } from '../ai/errors.js';
@@ -10,10 +10,10 @@ const SCRIPTS = ['hebrew', 'arabic', 'latin', 'other'];
 const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, rate_limited: 429, unreachable: 502, plan_invalid: 502 };
 
 // Returns the checked request, or an error code.
-function parse(body) {
+function validateRequest(body) {
   const { preset, teacher, prompt = '', script = 'other', chunks } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset)) return { code: 'invalid_request' };
-  if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > 200)) return { code: 'invalid_request' };
+  if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > MAX_MODEL_CHARS)) return { code: 'invalid_request' };
   if (typeof prompt !== 'string' || prompt.length > MAX_PROMPT_CHARS || !SCRIPTS.includes(script)) return { code: 'invalid_request' };
   if (!Array.isArray(chunks) || !chunks.length) return { code: 'invalid_request' };
   const ids = new Set();
@@ -34,7 +34,7 @@ function parse(body) {
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
   router.post('/plan', async (req, res) => {
-    const request = parse(req.body);
+    const request = validateRequest(req.body);
     const fail = (code) => res.status(STATUS[code]).json({ code });
     if (request.code) return fail(request.code);
     const apiKey = req.get('X-Api-Key')?.trim();
@@ -57,7 +57,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
         const content = (await response.json().catch(() => null))?.choices?.[0]?.message?.content;
         let reply;
         try { reply = JSON.parse(content); } catch { reply = null; }
-        const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids) : { ok: false, errors: ['the reply was not a JSON object'] };
+        const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids, { promptBlank: !request.prompt.trim() }) : { ok: false, errors: ['the reply was not a JSON object'] };
         if (result.ok) return res.json({ plan: result.plan, constraints: result.constraints });
         messages = repairMessages(messages, content, result.errors);
       }

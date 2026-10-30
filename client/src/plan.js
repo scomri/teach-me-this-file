@@ -31,8 +31,15 @@ export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl =
     if (signal?.aborted) throw error;
     throw new PlanError('unreachable');
   }
-  const body = await response.json().catch(() => ({}));
+  let body;
+  try {
+    body = await response.json();
+  } catch (error) {
+    if (signal?.aborted) throw error; // an abort while reading the body is not an empty reply
+    body = {};
+  }
   if (!response.ok) throw new PlanError(body.code ?? (response.status === 413 ? 'document_too_long' : 'unreachable'));
+  if (!body.plan || !body.constraints) throw new PlanError('plan_invalid');
   return body;
 }
 

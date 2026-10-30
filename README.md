@@ -49,4 +49,10 @@ The header connection pill reopens Settings. A rejected key or missing model mus
 
 Keys stay in browser memory by default and travel to the server only in `X-Api-Key`. Optional **Remember for this tab** uses `sessionStorage`, so reloading that tab restores settings. Uncheck it to remove the saved key. Scripts on the same origin can read tab storage; avoid remembering keys on shared devices. If browser storage is blocked, settings still work in memory and the app shows a warning. Keys are not stored on the server or in IndexedDB. Provider destinations are fixed server-side; custom base URLs are not supported.
 
-File ingestion and the echo demo remain available. Lesson planning is not yet connected to the selected model. Accounts, a database, multiple files per lesson, voice/avatar and teacher analytics are out of scope.
+## Planning a lesson
+
+Pick a file, optionally describe the lesson in the prompt box (for example "teach the main ideas in 15 minutes, in English, for 10th graders", up to 2,000 characters), and choose Plan. The teacher model returns a plan you can read before any student sees it: a title and, for each step, its objective, a check question, the key points a good answer covers, and the pages it draws on. Regenerate asks for a new plan. Start is disabled until the tutor exists.
+
+The prompt may state a language, audience, style and length; anything it leaves out gets a default (the prompt's language, else the document's; five steps). Steps run about 2.5 minutes each, between 3 and 10, and the stated length is a ceiling. A rejected key shows "Your key was rejected" with an Open Settings button, and the request re-runs after a successful save. A file with more than 100,000 characters of text cannot be planned yet. See [ADR 0003](docs/adr/0003-lesson-plan-call.md).
+
+File ingestion and the echo demo remain available. Accounts, a database, multiple files per lesson, voice/avatar and teacher analytics are out of scope.

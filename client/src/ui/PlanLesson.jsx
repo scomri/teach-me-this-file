@@ -12,24 +12,32 @@ const MESSAGES = {
 };
 const FALLBACK = "The plan couldn't be made. Try again.";
 
-// Teacher prompt in, read-only plan out. `saves` counts successful settings saves: a save
+// Teacher prompt in, read-only plan out. `saveCount` counts successful settings saves: a save
 // after a rejected key re-runs the request.
-export default function PlanLesson({ doc, settings, saves, openSettings }) {
-  const [prompt, setPrompt] = useState('');
+export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings }) {
   const [state, setState] = useState({ status: 'idle' });
   const controller = useRef(null);
+  // The newest props, for code that runs after an await and must not use a stale closure.
+  const latest = useRef({});
+  latest.current = { doc, settings, prompt };
 
-  async function plan() {
+  async function runPlan() {
     controller.current?.abort();
     const ac = new AbortController();
     controller.current = ac;
+    const sent = latest.current;
     setState((s) => ({ status: 'planning', plan: s.plan, constraints: s.constraints }));
     try {
-      const { plan, constraints } = await requestPlan({ doc, prompt, settings, signal: ac.signal });
+      const { plan, constraints } = await requestPlan({ ...sent, signal: ac.signal });
       setState({ status: 'done', plan, constraints });
     } catch (error) {
       if (ac.signal.aborted) return;
-      setState((s) => ({ status: error.code === 'invalid_key' ? 'key_rejected' : 'error', code: error.code, plan: s.plan, constraints: s.constraints }));
+      if (error.code === 'invalid_key') {
+        // The key changed while the request was in flight: the rejection is about the old one.
+        if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan();
+        return setState({ status: 'key_rejected' }); // a plan made with the old key is dropped
+      }
+      setState((s) => ({ status: 'error', code: error.code, plan: s.plan, constraints: s.constraints }));
     }
   }
 
@@ -38,17 +46,13 @@ export default function PlanLesson({ doc, settings, saves, openSettings }) {
     setState((s) => ({ status: s.plan ? 'done' : 'idle', plan: s.plan, constraints: s.constraints }));
   }
 
-  useEffect(() => {
-    controller.current?.abort();
-    setState({ status: 'idle' }); // a different file: drop the old plan
-    return () => controller.current?.abort();
-  }, [doc]);
+  useEffect(() => () => controller.current?.abort(), []);
 
   useEffect(() => {
-    if (saves && state.status === 'key_rejected') plan();
-  }, [saves]);
+    if (saveCount && state.status === 'key_rejected') runPlan();
+  }, [saveCount]);
 
-  const { status, plan: current } = state;
+  const { status, plan } = state;
   const planning = status === 'planning';
   const noKey = !settings.apiKey.trim();
 
@@ -65,7 +69,7 @@ export default function PlanLesson({ doc, settings, saves, openSettings }) {
         placeholder="For example: teach the main ideas in 15 minutes, in English, for 10th graders"
       />
       <div className="mt-2 flex items-center gap-2">
-        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={plan} disabled={planning || noKey}>
+        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={runPlan} disabled={planning || noKey}>
           {planning ? 'Planning…' : 'Plan'}
         </button>
         {planning && <button className="rounded border border-slate-300 px-3 py-1" onClick={cancel}>Cancel</button>}
@@ -87,7 +91,7 @@ export default function PlanLesson({ doc, settings, saves, openSettings }) {
         )}
       </div>
 
-      {current && <PlanScreen plan={current} constraints={state.constraints} doc={doc} busy={planning} onRegenerate={plan} />}
+      {plan && <PlanScreen plan={plan} constraints={state.constraints} doc={doc} busy={planning} onRegenerate={runPlan} />}
     </section>
   );
 }

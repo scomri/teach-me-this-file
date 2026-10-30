@@ -31,29 +31,38 @@ export const PLAN_RESPONSE_FORMAT = {
   },
 };
 
-const text = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_CONSTRAINT_CHARS) : null);
+const trimConstraint = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_CONSTRAINT_CHARS) : null);
 
-// Constraints as the teacher stated them, with defaults filled by code.
-export function resolveConstraints(reply) {
-  const c = reply?.constraints ?? {};
+// Constraints as the teacher stated them, with defaults filled by code. With a blank prompt the
+// teacher stated nothing: the model's constraints are ignored (the document cannot set them) and the
+// prompt language is the placeholder's, not the teacher's.
+export function resolveConstraints(reply, { promptBlank = false } = {}) {
+  const c = promptBlank ? {} : (reply?.constraints ?? {});
   const minutes = typeof c.minutes === 'number' && Number.isFinite(c.minutes) && c.minutes > 0 ? c.minutes : null;
   const maxSteps = minutes == null ? DEFAULT_STEPS : Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.round(minutes / MINUTES_PER_STEP)));
   return {
-    language: text(c.language) ?? text(reply?.promptLanguage) ?? text(reply?.documentLanguage),
-    audience: text(c.audience),
-    style: text(c.style),
+    language: trimConstraint(c.language) ?? (promptBlank ? null : trimConstraint(reply?.promptLanguage)) ?? trimConstraint(reply?.documentLanguage),
+    audience: trimConstraint(c.audience),
+    style: trimConstraint(c.style),
     minutes,
     maxSteps,
   };
 }
 
-const key = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+const normalizeTitle = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 // reply: the parsed model output. chunkIds: Set of ids in the document.
 // Returns { ok: true, plan, constraints } or { ok: false, errors } (strings for the repair message).
-export function validatePlan(reply, chunkIds) {
+export function validatePlan(reply, chunkIds, { promptBlank = false } = {}) {
   const errors = [];
-  const constraints = resolveConstraints(reply);
+  const constraints = resolveConstraints(reply, { promptBlank });
+  const c = reply?.constraints;
+  if (!c || typeof c !== 'object') errors.push('constraints must be an object');
+  else {
+    for (const k of ['language', 'audience', 'style']) if (c[k] !== null && typeof c[k] !== 'string') errors.push(`constraints.${k} must be a string or null`);
+    if (c.minutes !== null && typeof c.minutes !== 'number') errors.push('constraints.minutes must be a number or null');
+  }
+  for (const k of ['promptLanguage', 'documentLanguage']) if (typeof reply?.[k] !== 'string') errors.push(`${k} must be a string`);
   const { title, steps } = reply?.plan ?? {};
   const field = (value, cap, label) => {
     if (typeof value !== 'string' || !value.trim()) errors.push(`${label} must be a non-empty string`);
@@ -88,11 +97,12 @@ export function validatePlan(reply, chunkIds) {
       errors.push(`${at} expected must have 1 to ${MAX_POINTS} key points`);
     } else {
       expected = s.expected.map((p, j) => field(p, CAPS.point, `${at} expected point ${j + 1}`));
+      if (new Set(expected.map((p) => p?.toLowerCase())).size < expected.length) errors.push(`${at} repeats a key point`);
     }
 
     if (stepTitle) {
-      if (titles.has(key(stepTitle))) errors.push(`${at} repeats the title of an earlier step`);
-      titles.add(key(stepTitle));
+      if (titles.has(normalizeTitle(stepTitle))) errors.push(`${at} repeats the title of an earlier step`);
+      titles.add(normalizeTitle(stepTitle));
     }
     if (ids.length) {
       const set = [...ids].sort().join(',');

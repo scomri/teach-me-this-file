@@ -21,7 +21,7 @@ export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate 
               <p dir="auto" className="mt-2 text-sm"><span className="font-medium">Check question:</span> {step.checkQuestion}</p>
               <p className="mt-2 text-sm font-medium">Expected points</p>
               <ul dir="auto" className="list-disc ps-5 text-sm">
-                {step.expected.map((point) => <li key={point}>{point}</li>)}
+                {step.expected.map((point, j) => <li key={j}>{point}</li>)}
               </ul>
               {pages && <p className="mt-2 text-xs text-slate-500">Source: {pages}</p>}
             </li>

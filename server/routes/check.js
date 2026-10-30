@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { MAX_MODEL_CHARS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { providerOutcome } from '../ai/errors.js';
@@ -7,7 +8,7 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
   const router = Router();
   router.post('/check', async (req, res) => {
     const { preset, evaluator, teacher } = req.body ?? {};
-    if (!Object.hasOwn(PRESETS, preset) || [evaluator, teacher].some(x => x !== undefined && (typeof x !== 'string' || x.length > 200))) {
+    if (!Object.hasOwn(PRESETS, preset) || [evaluator, teacher].some(x => x !== undefined && (typeof x !== 'string' || x.length > MAX_MODEL_CHARS))) {
       return res.status(400).json({ code: 'invalid_request' });
     }
     const apiKey = req.get('X-Api-Key')?.trim();

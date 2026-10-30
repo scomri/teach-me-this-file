@@ -181,3 +181,29 @@ test('the plan route validates its input before calling the provider', async (t)
   assert.deepEqual(await long.json(), { code: 'document_too_long' });
   assert.equal(calls, 0);
 });
+
+test('a blank prompt states nothing: document language, default steps, no model-set constraints', async (t) => {
+  assert.equal(resolveConstraints(reply(), { promptBlank: true }).language, 'Hebrew');
+  const planted = { constraints: { language: 'French', audience: 'x', style: 'y', minutes: 125 } };
+  const c = resolveConstraints(reply(undefined, planted), { promptBlank: true });
+  assert.deepEqual([c.language, c.audience, c.style, c.minutes, c.maxSteps], ['Hebrew', null, null, null, 5]);
+
+  const { plan } = await setup(t, async () => wrap(reply(undefined, planted)));
+  const body = await (await plan({ prompt: '  ' })).json();
+  assert.equal(body.constraints.language, 'Hebrew');
+  assert.equal(body.constraints.maxSteps, 5);
+});
+
+test('validation rejects wrong-typed constraints and repeated key points', () => {
+  const bad = (r, pattern) => {
+    const v = validatePlan(r, ids);
+    assert.equal(v.ok, false, pattern);
+    assert.match(v.errors.join('\n'), pattern);
+  };
+  const withConstraints = (constraints) => reply(undefined, { constraints });
+  bad(withConstraints({ language: null, audience: null, style: null, minutes: '15' }), /constraints\.minutes/);
+  bad(withConstraints({ language: 5, audience: null, style: null, minutes: null }), /constraints\.language/);
+  bad(reply(undefined, { constraints: null }), /constraints must be an object/);
+  bad(reply(undefined, { promptLanguage: undefined }), /promptLanguage must be a string/);
+  bad(reply([step(1, { expected: ['Same point', 'same point'] })]), /repeats a key point/);
+});

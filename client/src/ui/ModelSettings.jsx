@@ -1,4 +1,5 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { MAX_MODEL_CHARS } from '../../../shared/limits.js';
 import { PRESETS } from '../../../shared/presets.js';
 import { loadSettings, saveSettings } from '../settings.js';
 
@@ -110,7 +111,7 @@ export default function ModelSettings({ ref, onSettings, onSaved }) {
         {storageWarning && <p role="status" className="text-sm text-amber-900">{storageWarning}</p>}
         <label className="flex flex-col gap-1">Preset<select autoFocus value={draft.preset} onChange={e => change({preset:e.target.value,evaluator:PRESETS[e.target.value].evaluator,teacher:PRESETS[e.target.value].teacher})} className="w-full rounded border p-2">{Object.entries(PRESETS).map(([id,p]) => <option key={id} value={id}>{p.name}</option>)}</select></label>
         <div><label htmlFor="model-key" className="block">API key</label><div className="mt-1 flex gap-2"><input id="model-key" type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={e => change({apiKey:e.target.value})} autoComplete="off" required aria-invalid={error?.field === 'apiKey'} aria-describedby={error?.field === 'apiKey' ? 'settings-error' : undefined} className="min-w-0 flex-1 rounded border p-2"/><button type="button" aria-pressed={showKey} onClick={() => setShowKey(v=>!v)} className="rounded border px-3">{showKey ? 'Hide' : 'Show'}</button></div><a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-sm underline">Get a key from {preset.name}</a></div>
-        {['evaluator','teacher'].map(role => <label key={role} className="flex flex-col gap-1">{role === 'evaluator' ? 'Evaluator model' : 'Teacher model'}<input value={draft[role]} placeholder={preset[role]} maxLength={200} onChange={e=>change({[role]:e.target.value})} aria-invalid={error?.field === role} aria-describedby={error?.field === role ? 'settings-error' : undefined} className="min-w-0 w-full rounded border p-2"/></label>)}
+        {['evaluator','teacher'].map(role => <label key={role} className="flex flex-col gap-1">{role === 'evaluator' ? 'Evaluator model' : 'Teacher model'}<input value={draft[role]} placeholder={preset[role]} maxLength={MAX_MODEL_CHARS} onChange={e=>change({[role]:e.target.value})} aria-invalid={error?.field === role} aria-describedby={error?.field === role ? 'settings-error' : undefined} className="min-w-0 w-full rounded border p-2"/></label>)}
         <p className="text-sm text-slate-600">Blank model fields use the preset defaults shown above.</p>
         <label className="flex items-start gap-2"><input type="checkbox" checked={draft.remember} onChange={e=>change({remember:e.target.checked})} className="mt-1"/>Remember for this tab</label>
         <p className="text-sm text-slate-600">Your key stays in memory unless you opt in. Remembered keys can be read by scripts on this site and last until this tab closes. Uncheck to remove the saved key.</p>

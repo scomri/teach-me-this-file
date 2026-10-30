@@ -11,7 +11,8 @@ export default function App() {
   const [streaming, setStreaming] = useState(false);
   const [doc, setDoc] = useState(null);
   const [settings, setSettings] = useState(null);
-  const [saves, setSaves] = useState(0);
+  const [saveCount, setSaveCount] = useState(0);
+  const [prompt, setPrompt] = useState(''); // lives here so it survives picking another file
   const settingsRef = useRef(null);
   const abortRef = useRef(null);
   const idRef = useRef(null);
@@ -92,12 +93,12 @@ export default function App() {
       <ModelSettings
         ref={settingsRef}
         onSettings={setSettings}
-        onSaved={(saved) => { setSettings(saved); setSaves((n) => n + 1); }}
+        onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
       />
       <p className="mt-2 text-slate-600">API: {api}</p>
 
       <FileIngest onDoc={setDoc} />
-      {doc && settings && <PlanLesson doc={doc} settings={settings} saves={saves} openSettings={() => settingsRef.current.open()} />}
+      {doc && settings && <PlanLesson doc={doc} settings={settings} saveCount={saveCount} prompt={prompt} setPrompt={setPrompt} openSettings={() => settingsRef.current.open()} />}
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"

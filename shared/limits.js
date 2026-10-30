@@ -20,5 +20,8 @@ export const MIN_STEPS = 3;
 export const MAX_STEPS = 10;
 export const DEFAULT_STEPS = 5;
 
+// Longest model name a settings field or request may carry, in characters.
+export const MAX_MODEL_CHARS = 200;
+
 // Longest teacher prompt, in characters.
 export const MAX_PROMPT_CHARS = 2000;
