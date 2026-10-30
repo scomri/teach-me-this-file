@@ -6,14 +6,16 @@ const notices = {
   rate_limited: 'Settings saved. The key works but is rate-limited right now. Open Settings to retry.',
   unreachable: 'Settings saved, but the connection could not be verified. Open Settings to retry.',
 };
+const storageUnavailableNotice = 'Browser storage is unavailable. Settings are kept in memory for this visit; close this tab to clear any previously remembered key.';
 
 export default function ModelSettings() {
-  const [settings, setSettings] = useState(loadSettings);
+  const [{settings:initialSettings,storageUnavailable}] = useState(loadSettings);
+  const [settings, setSettings] = useState(initialSettings);
   const [draft, setDraft] = useState(settings);
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [storageWarning, setStorageWarning] = useState('');
+  const [storageWarning, setStorageWarning] = useState(storageUnavailable ? storageUnavailableNotice : '');
   const dialog = useRef(null);
   const trigger = useRef(null);
   const request = useRef(null);
@@ -85,7 +87,7 @@ export default function ModelSettings() {
     }
     next.code = ['ok','rate_limited','unreachable'].includes(result.code) ? result.code : 'unreachable';
     const stored = saveSettings(next);
-    setStorageWarning(stored ? '' : 'Browser storage is unavailable. Settings are kept in memory for this visit; close this tab to clear any previously remembered key.');
+    setStorageWarning(stored ? '' : storageUnavailableNotice);
     if (!stored) next.remember = false;
     setSettings(next); setDraft(next); close();
   }
@@ -98,6 +100,7 @@ export default function ModelSettings() {
     <dialog ref={dialog} onKeyDown={containFocus} aria-labelledby="settings-title" onCancel={cancelCheck} onClose={() => { cancelCheck(); trigger.current?.focus(); }} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl p-5 shadow-xl backdrop:bg-slate-950/40">
       <form onSubmit={save} className="flex min-w-0 flex-col gap-4">
         <div className="flex items-center justify-between gap-3"><h2 id="settings-title" className="text-xl font-semibold">Model settings</h2><button type="button" onClick={close} aria-label="Close settings" className="rounded border px-3 py-1">Close</button></div>
+        {storageWarning && <p role="status" className="text-sm text-amber-900">{storageWarning}</p>}
         <label className="flex flex-col gap-1">Preset<select autoFocus value={draft.preset} onChange={e => change({preset:e.target.value,evaluator:PRESETS[e.target.value].evaluator,teacher:PRESETS[e.target.value].teacher})} className="w-full rounded border p-2">{Object.entries(PRESETS).map(([id,p]) => <option key={id} value={id}>{p.name}</option>)}</select></label>
         <div><label htmlFor="model-key" className="block">API key</label><div className="mt-1 flex gap-2"><input id="model-key" type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={e => change({apiKey:e.target.value})} autoComplete="off" required aria-invalid={error?.field === 'apiKey'} aria-describedby={error?.field === 'apiKey' ? 'settings-error' : undefined} className="min-w-0 flex-1 rounded border p-2"/><button type="button" aria-pressed={showKey} onClick={() => setShowKey(v=>!v)} className="rounded border px-3">{showKey ? 'Hide' : 'Show'}</button></div><a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-sm underline">Get a key from {preset.name}</a></div>
         {['evaluator','teacher'].map(role => <label key={role} className="flex flex-col gap-1">{role === 'evaluator' ? 'Evaluator model' : 'Teacher model'}<input value={draft[role]} placeholder={preset[role]} maxLength={200} onChange={e=>change({[role]:e.target.value})} aria-invalid={error?.field === role} aria-describedby={error?.field === role ? 'settings-error' : undefined} className="min-w-0 w-full rounded border p-2"/></label>)}

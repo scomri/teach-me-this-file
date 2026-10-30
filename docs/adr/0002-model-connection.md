@@ -2,7 +2,7 @@
 
 ## Context
 
-Model connection must support five providers and separate evaluator and teacher models without letting a public server call user-supplied destinations. The browser supplies the user's key per request; the stateless server must not retain it.
+Model connection must support four providers and separate evaluator and teacher models without letting a public server call user-supplied destinations. The browser supplies the user's key per request; the stateless server must not retain it.
 
 ## Decision
 

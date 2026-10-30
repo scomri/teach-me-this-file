@@ -39,7 +39,7 @@ Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /
 
 ## Model connection
 
-Settings opens automatically when no key is available. Choose Gemini (default), Groq, OpenRouter, OpenAI or Anthropic, enter your own API key, and choose Save and check connection. Each preset fills separate evaluator and teacher models; blank model fields use that preset's defaults. Checks make a tiny request for each model and may consume provider quota.
+Settings opens automatically when no key is available. Choose Gemini (default), OpenRouter, OpenAI or Anthropic, enter your own API key, and choose Save and check connection. Each preset fills separate evaluator and teacher models; blank model fields use that preset's defaults. Checks make a tiny request for each model and may consume provider quota.
 
 The header connection pill reopens Settings. A rejected key or missing model must be corrected before saving. Rate limits and connection failures save with a visible warning; reopen Settings and save to retry. A saved connection is not a guarantee that later requests will succeed.
 

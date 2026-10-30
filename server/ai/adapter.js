@@ -1,6 +1,5 @@
 const PROVIDERS = {
   gemini: { url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', temperature: true },
-  groq: { url: 'https://api.groq.com/openai/v1/chat/completions', temperature: true },
   openrouter: { url: 'https://openrouter.ai/api/v1/chat/completions', temperature: true },
   openai: { url: 'https://api.openai.com/v1/chat/completions', temperature: false },
   anthropic: { url: 'https://api.anthropic.com/v1/chat/completions', temperature: false },

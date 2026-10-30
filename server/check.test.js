@@ -36,10 +36,11 @@ test('check times out, rejects unsupported input, and uses defaults for blank ro
  assert.deepEqual(await (await check({preset:'gemini',evaluator:'timeout'})).json(),{code:'unreachable'});
  assert.equal((await check({preset:'http://localhost'})).status,400);
  assert.equal((await check({preset:'__proto__'})).status,400);
+ assert.equal((await check({preset:'groq'})).status,400);
  assert.equal((await check({preset:'gemini',teacher:{}})).status,400);
  assert.deepEqual(await (await check({preset:'gemini'},'')).json(),{code:'invalid_key'});
- assert.deepEqual(await (await check({preset:'groq',evaluator:' ',teacher:'custom-model'})).json(),{code:'ok'});
- assert.deepEqual(models,['timeout','openai/gpt-oss-20b','custom-model']);
+ assert.deepEqual(await (await check({preset:'gemini',evaluator:' ',teacher:'custom-model'})).json(),{code:'ok'});
+ assert.deepEqual(models,['timeout','gemini-3.5-flash-lite','custom-model']);
  assert.ok(!lines.join('').includes('secret-key'));
 });
 
@@ -56,4 +57,19 @@ test('check validates teacher after an evaluator network failure without leaking
  assert.equal(calls,2);
  assert.ok(!JSON.stringify(body).includes('secret-key'));
  assert.ok(!lines.join('').includes('secret-key'));
+});
+
+test('an unreachable model takes precedence over rate limits in either role', async (t) => {
+ for (const statuses of [[0,429],[429,0],[500,429],[429,500]]) {
+  let calls = 0;
+  const app = createApp({log:()=>{},providerFetch:async()=>{
+   const status = statuses[calls++];
+   if (!status) throw Error('network failure');
+   return new Response('{}',{status});
+  }});
+  const server = app.listen(0); t.after(()=>server.close());
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':'fake-key'},body:'{"preset":"gemini"}'});
+  assert.deepEqual(await res.json(),{code:'unreachable'},`provider outcomes ${statuses}`);
+  assert.equal(calls,2);
+ }
 });
