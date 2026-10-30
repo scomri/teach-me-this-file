@@ -72,9 +72,11 @@ export default function ModelSettings() {
     if (version !== generation.current) return;
     setBusy(false);
     if (result.code === 'invalid_key') {
-      setSettings(s => ({...s,code:'invalid_key'}));
-      // A failed recheck must not resurrect a formerly remembered ready state.
-      if (!saveSettings({...settings,remember:false})) setStorageWarning('Browser storage is unavailable. Close this tab to clear any previously remembered key.');
+      if (!settings.apiKey || (settings.preset === next.preset && settings.apiKey === next.apiKey)) {
+        setSettings(s => ({...s,code:'invalid_key'}));
+        // Only a rejected saved credential invalidates its remembered connection.
+        if (!saveSettings({...settings,remember:false})) setStorageWarning('Browser storage is unavailable. Close this tab to clear any previously remembered key.');
+      }
       setError({field:'apiKey',message:'This key was rejected. Edit it and try again.'});
       return;
     }
