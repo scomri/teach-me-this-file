@@ -18,9 +18,14 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
     try {
       let warning = 'ok';
       for (const role of ['evaluator', 'teacher']) {
-        const response = await chatCompletion({preset, apiKey, model: req.body[role]?.trim() || PRESETS[preset][role], messages: [{role:'user',content:'Hi'}], signal: controller.signal}, fetchImpl);
-        await response.body?.cancel();
-        const code = response.ok ? 'ok' : [401,403].includes(response.status) ? 'invalid_key' : response.status === 404 ? 'model_not_found' : response.status === 429 ? 'rate_limited' : 'unreachable';
+        let code = 'unreachable';
+        try {
+          const response = await chatCompletion({preset, apiKey, model: req.body[role]?.trim() || PRESETS[preset][role], messages: [{role:'user',content:'Hi'}], signal: controller.signal}, fetchImpl);
+          await response.body?.cancel();
+          code = response.ok ? 'ok' : [401,403].includes(response.status) ? 'invalid_key' : response.status === 404 ? 'model_not_found' : response.status === 429 ? 'rate_limited' : 'unreachable';
+        } catch (error) {
+          if (controller.signal.aborted) throw error;
+        }
         if (code === 'invalid_key' || code === 'model_not_found') return res.json({ code, ...(code === 'model_not_found' ? {role} : {}) });
         if (code !== 'ok') warning = code;
       }

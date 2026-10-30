@@ -42,3 +42,18 @@ test('check times out, rejects unsupported input, and uses defaults for blank ro
  assert.deepEqual(models,['timeout','openai/gpt-oss-20b','custom-model']);
  assert.ok(!lines.join('').includes('secret-key'));
 });
+
+test('check validates teacher after an evaluator network failure without leaking errors', async (t) => {
+ const lines = []; let calls = 0;
+ const app = createApp({log:line=>lines.push(line),providerFetch:async()=>{
+  if (++calls === 1) throw Error('secret-key provider details');
+  return new Response('secret-key provider details',{status:404});
+ }});
+ const server = app.listen(0); t.after(()=>server.close());
+ const res = await fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':'secret-key'},body:'{"preset":"gemini"}'});
+ const body = await res.json();
+ assert.deepEqual(body,{code:'model_not_found',role:'teacher'});
+ assert.equal(calls,2);
+ assert.ok(!JSON.stringify(body).includes('secret-key'));
+ assert.ok(!lines.join('').includes('secret-key'));
+});
