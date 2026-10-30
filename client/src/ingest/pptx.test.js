@@ -47,6 +47,20 @@ test('a picture-only slide is skipped, the others are not', async () => {
   assert.deepEqual(doc.chunks.map((c) => [c.page, c.heading]), [[1, 'Photosynthesis'], [3, 'Inputs and outputs · קלט ופלט']]);
 });
 
+test('a slide of mostly broken characters is skipped, by the same rule as PDF pages', async () => {
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(bytes);
+  for (const name of Object.keys(zip.files).filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))) {
+    const xml = await zip.file(name).async('string');
+    if (xml.includes('How plants make sugar')) {
+      zip.file(name, xml.replace('How plants make sugar', `How plants make sugar${''.repeat(400)}`));
+    }
+  }
+  const file = new File([await zip.generateAsync({ type: 'nodebuffer' })], 'broken.pptx');
+  const { skippedPages } = await readPptx(file, { DOMParser });
+  assert.deepEqual(skippedPages, [1, 2]);
+});
+
 test('a renamed text file is unreadable', async () => {
   await assert.rejects(readPptx(new File(['just text'], 'x.pptx'), { DOMParser }), (e) => e instanceof IngestError && e.code === 'unreadable');
 });

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'; // the browser build needs a DOM
 import { IngestError } from './ingest.js';
-import { dropRepeated, joinItems, printedLabels, readPdf, unreadable } from './pdf.js';
+import { dropRepeated, joinItems, printedLabels, readPdf } from './pdf.js';
 
 const fixture = (name) => new File([readFileSync(new URL(`./fixtures/${name}`, import.meta.url))], name);
 const read = (f, opts) => readPdf(f, { pdfjs, ...opts });
@@ -150,14 +150,6 @@ test('printed page numbers become labels when they keep a constant offset', () =
   pages[3][1].text = 'body';
   assert.equal(printedLabels(pages), null); // 4 of 7 is under 60%
   assert.equal(printedLabels([pageOf('2024'), pageOf('2024'), pageOf('2024')]), null); // a year is not a page number
-});
-
-test('a page is unreadable with under 20 letters or over 20% broken characters', () => {
-  assert.equal(unreadable('Fig. 2'), true);
-  assert.equal(unreadable('The nucleus holds the genetic material.'), false);
-  const broken = String.fromCharCode(0xfffd, 0xe000, 0x7).repeat(4); // replacement, private-use, control
-  assert.equal(unreadable(`The nucleus holds the genetic material ${broken}`), true);
-  assert.equal(unreadable('תא הוא יחידת החיים הבסיסית'), false);
 });
 
 test('a book: running header and page numbers dropped, printed labels kept, a figure page skipped', async () => {
