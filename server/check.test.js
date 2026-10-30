@@ -34,10 +34,10 @@ test('check times out, rejects unsupported input, and uses defaults for blank ro
   return fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':key},body:JSON.stringify(body)});
  }
  assert.deepEqual(await (await check({preset:'gemini',evaluator:'timeout'})).json(),{code:'unreachable'});
- assert.equal((await check({preset:'http://localhost'})).status,400);
- assert.equal((await check({preset:'__proto__'})).status,400);
- assert.equal((await check({preset:'groq'})).status,400);
- assert.equal((await check({preset:'gemini',teacher:{}})).status,400);
+ { const res = await check({preset:'http://localhost'}); assert.equal(res.status,400); assert.deepEqual(await res.json(),{code:'invalid_request'}); }
+ { const res = await check({preset:'__proto__'}); assert.equal(res.status,400); assert.deepEqual(await res.json(),{code:'invalid_request'}); }
+ { const res = await check({preset:'groq'}); assert.equal(res.status,400); assert.deepEqual(await res.json(),{code:'invalid_request'}); }
+ { const res = await check({preset:'gemini',teacher:{}}); assert.equal(res.status,400); assert.deepEqual(await res.json(),{code:'invalid_request'}); }
  assert.deepEqual(await (await check({preset:'gemini'},'')).json(),{code:'invalid_key'});
  assert.deepEqual(await (await check({preset:'gemini',evaluator:' ',teacher:'custom-model'})).json(),{code:'ok'});
  assert.deepEqual(models,['timeout','gemini-3.5-flash-lite','custom-model']);
@@ -71,5 +71,20 @@ test('an unreachable model takes precedence over rate limits in either role', as
   const res = await fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':'fake-key'},body:'{"preset":"gemini"}'});
   assert.deepEqual(await res.json(),{code:'unreachable'},`provider outcomes ${statuses}`);
   assert.equal(calls,2);
+ }
+});
+
+test('a 400 naming an unknown model is model_not_found; other 400s stay unreachable', async (t) => {
+ for (const [text, code] of [
+  ['{"error":{"message":"acme/typo is not a valid model ID","code":400}}','model_not_found'],
+  ['{"error":{"message":"models/typo is not found for API version v1beta"}}','model_not_found'],
+  ['{"error":{"message":"Invalid JSON payload received.","code":400}}','unreachable'],
+ ]) {
+  const app = createApp({log:()=>{},providerFetch:async()=>new Response(text,{status:400})});
+  const server = app.listen(0); t.after(()=>server.close());
+  const res = await fetch(`http://127.0.0.1:${server.address().port}/api/check`,{method:'POST',headers:{'Content-Type':'application/json','X-Api-Key':'fake-key'},body:'{"preset":"openrouter"}'});
+  const body = await res.json();
+  assert.equal(body.code,code,text);
+  assert.ok(!JSON.stringify(body).includes('typo'));
  }
 });

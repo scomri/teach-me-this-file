@@ -2,12 +2,24 @@ import { Router } from 'express';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 
+// Some providers (OpenRouter) answer an unknown model with 400, not 404. The body is matched, never forwarded.
+const UNKNOWN_MODEL = /model_not_found|not a valid model|models?\b[^.]{0,80}?(not found|does not exist)|(invalid|unknown) model/i;
+
+async function outcome(response) {
+  if (response.ok) return 'ok';
+  if ([401, 403].includes(response.status)) return 'invalid_key';
+  if (response.status === 404) return 'model_not_found';
+  if (response.status === 429) return 'rate_limited';
+  if (response.status === 400 && UNKNOWN_MODEL.test(await response.text())) return 'model_not_found';
+  return 'unreachable';
+}
+
 export function checkRouter(fetchImpl, timeoutMs = 10000) {
   const router = Router();
   router.post('/check', async (req, res) => {
     const { preset, evaluator, teacher } = req.body ?? {};
     if (!Object.hasOwn(PRESETS, preset) || [evaluator, teacher].some(x => x !== undefined && (typeof x !== 'string' || x.length > 200))) {
-      return res.status(400).json({ code: 'unreachable' });
+      return res.status(400).json({ code: 'invalid_request' });
     }
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return res.json({ code: 'invalid_key' });
@@ -21,8 +33,8 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
         let code = 'unreachable';
         try {
           const response = await chatCompletion({preset, apiKey, model: req.body[role]?.trim() || PRESETS[preset][role], messages: [{role:'user',content:'Hi'}], signal: controller.signal}, fetchImpl);
-          await response.body?.cancel();
-          code = response.ok ? 'ok' : [401,403].includes(response.status) ? 'invalid_key' : response.status === 404 ? 'model_not_found' : response.status === 429 ? 'rate_limited' : 'unreachable';
+          code = await outcome(response);
+          if (!response.bodyUsed) await response.body?.cancel();
         } catch (error) {
           if (controller.signal.aborted) throw error;
         }

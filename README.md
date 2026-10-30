@@ -45,7 +45,7 @@ Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /
 
 Settings opens automatically when no key is available. Choose Gemini (default), OpenRouter, OpenAI or Anthropic, enter your own API key, and choose Save and check connection. Each preset fills separate evaluator and teacher models; blank model fields use that preset's defaults. Checks make a tiny request for each model and may consume provider quota.
 
-The header connection pill reopens Settings. A rejected key or missing model must be corrected before saving. Rate limits and connection failures save with a visible warning; reopen Settings and save to retry. A saved connection is not a guarantee that later requests will succeed.
+The header connection pill reopens Settings. A rejected key or missing model must be corrected before saving. Rate limits and connection failures save with a visible warning, and the pill reads "rate-limited" or "not verified" instead of "ready"; reopen Settings and save to retry. A saved connection is not a guarantee that later requests will succeed.
 
 Keys stay in browser memory by default and travel to the server only in `X-Api-Key`. Optional **Remember for this tab** uses `sessionStorage`, so reloading that tab restores settings. Uncheck it to remove the saved key. Scripts on the same origin can read tab storage; avoid remembering keys on shared devices. If browser storage is blocked, settings still work in memory and the app shows a warning. Keys are not stored on the server or in IndexedDB. Provider destinations are fixed server-side; custom base URLs are not supported.
 

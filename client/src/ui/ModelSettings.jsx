@@ -68,7 +68,7 @@ export default function ModelSettings() {
         method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':next.apiKey},
         body:JSON.stringify({preset:next.preset,evaluator:next.evaluator,teacher:next.teacher}),signal:controller.signal,
       });
-      result = response.ok ? await response.json() : {code:'unreachable'};
+      result = await response.json().catch(() => ({code:'unreachable'}));
     } catch { result = {code:'unreachable'}; }
     finally { clearTimeout(timeout); }
     if (version !== generation.current) return;
@@ -85,6 +85,9 @@ export default function ModelSettings() {
     if (result.code === 'model_not_found') {
       setError({field:result.role === 'teacher' ? 'teacher' : 'evaluator',message:'This model was not found. Edit it and try again.'}); return;
     }
+    if (result.code === 'invalid_request') {
+      setError({field:null,message:'The server rejected these settings. Reload the page and try again.'}); return;
+    }
     next.code = ['ok','rate_limited','unreachable'].includes(result.code) ? result.code : 'unreachable';
     const stored = saveSettings(next);
     setStorageWarning(stored ? '' : storageUnavailableNotice);
@@ -92,7 +95,7 @@ export default function ModelSettings() {
     setSettings(next); setDraft(next); close();
   }
 
-  const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ready`;
+  const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ${{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}`;
   return <>
     <button ref={trigger} onClick={open} className="mt-3 rounded-full border border-slate-400 px-3 py-1 text-sm"><span aria-live="polite">{pill}</span><span className="sr-only"> — Open model settings</span></button>
     {notices[settings.code] && <p role="status" className="mt-2 text-sm text-amber-900">{notices[settings.code]}</p>}
