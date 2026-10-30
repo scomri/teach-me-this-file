@@ -1,18 +1,7 @@
 import { Router } from 'express';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
-
-// Some providers (OpenRouter) answer an unknown model with 400, not 404. The body is matched, never forwarded.
-const UNKNOWN_MODEL = /model_not_found|not a valid model|models?\b[^.]{0,80}?(not found|does not exist)|(invalid|unknown) model/i;
-
-async function outcome(response) {
-  if (response.ok) return 'ok';
-  if ([401, 403].includes(response.status)) return 'invalid_key';
-  if (response.status === 404) return 'model_not_found';
-  if (response.status === 429) return 'rate_limited';
-  if (response.status === 400 && UNKNOWN_MODEL.test(await response.text())) return 'model_not_found';
-  return 'unreachable';
-}
+import { providerOutcome } from '../ai/errors.js';
 
 export function checkRouter(fetchImpl, timeoutMs = 10000) {
   const router = Router();
@@ -33,7 +22,7 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
         let code = 'unreachable';
         try {
           const response = await chatCompletion({preset, apiKey, model: req.body[role]?.trim() || PRESETS[preset][role], messages: [{role:'user',content:'Hi'}], signal: controller.signal}, fetchImpl);
-          code = await outcome(response);
+          code = await providerOutcome(response);
           if (!response.bodyUsed) await response.body?.cancel();
         } catch (error) {
           if (controller.signal.aborted) throw error;

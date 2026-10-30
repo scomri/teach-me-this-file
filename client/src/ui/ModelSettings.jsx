@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { PRESETS } from '../../../shared/presets.js';
 import { loadSettings, saveSettings } from '../settings.js';
 
@@ -8,7 +8,9 @@ const notices = {
 };
 const storageUnavailableNotice = 'Browser storage is unavailable. Settings are kept in memory for this visit; close this tab to clear any previously remembered key.';
 
-export default function ModelSettings() {
+// onSettings gets the current settings whenever they change; onSaved the new ones after a successful save.
+// ref.current.open() opens the dialog from outside.
+export default function ModelSettings({ ref, onSettings, onSaved }) {
   const [{settings:initialSettings,storageUnavailable}] = useState(loadSettings);
   const [settings, setSettings] = useState(initialSettings);
   const [draft, setDraft] = useState(settings);
@@ -32,6 +34,8 @@ export default function ModelSettings() {
     dialog.current.showModal();
   }
   function close() { cancelCheck(); dialog.current.close(); }
+  useImperativeHandle(ref, () => ({ open }));
+  useEffect(() => { onSettings?.(settings); }, [settings]);
   function containFocus(event) {
     if (event.key !== 'Tab') return;
     const controls = [...dialog.current.querySelectorAll('button, input, select, a[href]')].filter(el => !el.disabled);
@@ -92,7 +96,7 @@ export default function ModelSettings() {
     const stored = saveSettings(next);
     setStorageWarning(stored ? '' : storageUnavailableNotice);
     if (!stored) next.remember = false;
-    setSettings(next); setDraft(next); close();
+    setSettings(next); setDraft(next); onSaved?.(next); close();
   }
 
   const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ${{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}`;

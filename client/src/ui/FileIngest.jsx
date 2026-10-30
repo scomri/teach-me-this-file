@@ -12,7 +12,7 @@ function where(c, kind) {
   return [c.id, page, c.heading].filter(Boolean).join(' · ');
 }
 
-export default function FileIngest() {
+export default function FileIngest({ onDoc }) {
   const [state, setState] = useState({ status: 'idle' });
 
   async function pick(e) {
@@ -20,10 +20,12 @@ export default function FileIngest() {
     e.target.value = ''; // so picking the same file again re-reads it
     if (!file) return;
     setState({ status: 'reading' });
+    onDoc?.(null);
     const t0 = performance.now();
     try {
       const doc = await ingestFile(file, { onProgress: (progress) => setState({ status: 'reading', progress }) });
       setState({ status: 'done', doc, ms: Math.round(performance.now() - t0) });
+      onDoc?.(doc);
     } catch (err) {
       setState({ status: 'error', message: err instanceof IngestError ? err.message : "This file couldn't be read." });
     }
