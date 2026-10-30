@@ -16,4 +16,4 @@ A teacher gives a file and a short prompt and reviews a lesson plan before any s
 
 ## Consequences
 
-A model that ignores the ceiling or invents a chunk id is repaired or refused instead of shown. Validation and defaults are plain functions covered by unit tests with a stubbed model. The step ceiling depends on the minutes the model reports for a non-blank prompt, so text planted in a file could raise it, up to 10 steps; the teacher sees the plan before use. The response schema uses nullable types that some providers' compatibility layers may reject; that needs a check with each preset's real key.
+A model that ignores the ceiling or invents a chunk id is repaired or refused instead of shown. Validation and defaults are plain functions covered by unit tests with a stubbed model. The step ceiling depends on the minutes the model reports for a non-blank prompt, so text planted in a file could raise it, up to 10 steps; the teacher sees the plan before use. The response schema uses nullable types; all four presets (Gemini, OpenRouter, OpenAI, Anthropic) accepted it in a real-key check.
