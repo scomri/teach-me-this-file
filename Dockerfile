@@ -13,6 +13,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 # Root-owned, read-only for the runtime user.
 COPY server ./server
+COPY shared ./shared
 COPY --from=build /app/client/dist ./client/dist
 USER node
 EXPOSE 8080

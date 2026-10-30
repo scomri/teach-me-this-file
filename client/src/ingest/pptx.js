@@ -2,7 +2,7 @@
 // lists them; each slide is a page with its title as heading, its text, tables as
 // `cell | cell` rows, and the speaker notes under a `Notes:` line. jszip is loaded
 // on demand, so it stays out of the main bundle.
-import { IngestError } from './ingest.js';
+import { IngestError } from './errors.js';
 
 const BAD = () => new IngestError('unreadable', "This file isn't a valid PowerPoint presentation.");
 // Slides with fewer letters than this (pictures only) are listed as skipped.

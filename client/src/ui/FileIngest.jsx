@@ -22,7 +22,7 @@ export default function FileIngest() {
     setState({ status: 'reading' });
     const t0 = performance.now();
     try {
-      const doc = await ingestFile(file);
+      const doc = await ingestFile(file, { onProgress: (progress) => setState({ status: 'reading', progress }) });
       setState({ status: 'done', doc, ms: Math.round(performance.now() - t0) });
     } catch (err) {
       setState({ status: 'error', message: err instanceof IngestError ? err.message : "This file couldn't be read." });
@@ -42,7 +42,11 @@ export default function FileIngest() {
       </p>
 
       <div aria-live="polite">
-        {state.status === 'reading' && <p className="mt-3 text-sm text-slate-600">Reading file…</p>}
+        {state.status === 'reading' && (
+          <p className="mt-3 text-sm text-slate-600">
+            {state.progress ? `Reading page ${state.progress.page} of ${state.progress.total}…` : 'Reading file…'}
+          </p>
+        )}
         {state.status === 'error' && (
           <p className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">{state.message}</p>
         )}

@@ -3,13 +3,10 @@
 import { MAX_FILE_BYTES, MAX_FILE_MB } from '../../../shared/limits.js';
 import { chunkPages } from './chunk.js';
 import { decodeText } from './decode.js';
+import { IngestError } from './errors.js';
+import { readPdf } from './pdf.js';
 
-export class IngestError extends Error {
-  constructor(code, message) {
-    super(message);
-    this.code = code;
-  }
-}
+export { IngestError };
 
 async function readText(file) {
   const text = decodeText(new Uint8Array(await file.arrayBuffer()));
@@ -23,12 +20,14 @@ const readDocx = async (file) => (await import('./docx.js')).readDocx(file);
 // pptx likewise: jszip is only needed for slides.
 const readPptx = async (file) => (await import('./pptx.js')).readPptx(file);
 
-const READERS = { docx: readDocx, pptx: readPptx, txt: readText, md: readText };
+const READERS = { pdf: readPdf, docx: readDocx, pptx: readPptx, txt: readText, md: readText };
 const LEGACY = new Set(['doc', 'rtf', 'odt', 'ppt', 'odp']);
 
 export const ACCEPTED = Object.keys(READERS).map((ext) => `.${ext}`);
 
-export async function ingestFile(file) {
+// options go to the reader: onProgress({ page, total }) for readers with pages, and pdfjs
+// to pass a pdf.js build (tests use the Node one).
+export async function ingestFile(file, options = {}) {
   const dot = file.name.lastIndexOf('.');
   const ext = dot > 0 ? file.name.slice(dot + 1).toLowerCase() : '';
   const read = READERS[ext];
@@ -45,9 +44,9 @@ export async function ingestFile(file) {
   }
   if (!file.size) throw new IngestError('empty', 'This file is empty.');
 
-  // totalPages: a reader that drops unreadable pages reports the full count itself.
-  const { pages, skippedPages = [], totalPages } = await read(file);
+  // totalPages is whatever the reader reports (PDF, PPTX); formats without pages report none.
+  const { pages, skippedPages = [], totalPages = null } = await read(file, options);
   const result = chunkPages(pages);
   if (!result.chunks.length) throw new IngestError('empty', 'This file has no text to teach from.');
-  return { name: file.name, kind: ext, ...result, totalPages: totalPages ?? result.totalPages, skippedPages };
+  return { name: file.name, kind: ext, ...result, totalPages, skippedPages };
 }

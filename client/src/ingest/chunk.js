@@ -106,5 +106,5 @@ export function chunkPages(pages, { max = CHUNK_CHARS } = {}) {
     flush();
   }
 
-  return { chunks, totalChars, totalPages: pages.some((p) => p.page != null) ? pages.length : null };
+  return { chunks, totalChars };
 }

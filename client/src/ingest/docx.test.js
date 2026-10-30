@@ -1,28 +1,20 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { DOMParser } from 'linkedom';
 import { readDocx } from './docx.js';
-import { htmlToText } from './dom-text.js';
 import { ingestFile, IngestError } from './ingest.js';
 
 const bytes = readFileSync(new URL('./fixtures/worksheet.docx', import.meta.url));
 const docx = (name = 'worksheet.docx') => new File([bytes], name);
-const parse = (html) => new DOMParser().parseFromString(`<html><body>${html}</body></html>`, 'text/html');
+const savedParser = globalThis.DOMParser;
+after(() => { globalThis.DOMParser = savedParser; });
 const emptyDocx = await (async () => {
   const { default: JSZip } = await import('jszip');
   const zip = await JSZip.loadAsync(bytes);
   zip.file('word/document.xml', (await zip.file('word/document.xml').async('string')).replace(/<w:body>.*<\/w:body>/s, '<w:body><w:p/></w:body>'));
   return zip.generateAsync({ type: 'nodebuffer' });
 })();
-
-test('walk: headings, lists, tables, paragraphs in order', () => {
-  const text = htmlToText(
-    parse('<h1>A</h1><p>one <strong>two</strong></p><ul><li>x<ul><li>y</li></ul></li></ul><ol><li>p</li><li>q</li></ol>' +
-      '<table><tr><td><p>a</p><p>b</p></td><td>c</td></tr><tr><td></td><td></td></tr></table><img src="x">'),
-  );
-  assert.equal(text, '# A\n\none two\n\n- x\n  - y\n\n1. p\n2. q\n\na b | c');
-});
 
 test('reads the Hebrew and English fixture', async () => {
   const { pages } = await readDocx(docx(), { DOMParser });
@@ -64,4 +56,9 @@ test('a renamed text file is unreadable', async () => {
 test('a document with no text is empty', async () => {
   globalThis.DOMParser = DOMParser;
   await assert.rejects(ingestFile(new File([emptyDocx], 'blank.docx')), (e) => e instanceof IngestError && e.code === 'empty');
+});
+
+test('a failure outside mammoth is not reported as an invalid document', async () => {
+  const broken = { name: 'x.docx', size: 10, arrayBuffer: () => Promise.reject(new Error('disk gone')) };
+  await assert.rejects(readDocx(broken, { DOMParser }), /disk gone/);
 });

@@ -19,6 +19,7 @@
     "jszip": "3.10.2",
     "linkedom": "0.18.13",
     "mammoth": "1.13.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.0",

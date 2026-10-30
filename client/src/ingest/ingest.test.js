@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ingestFile, IngestError } from './ingest.js';
+import { readFileSync } from 'node:fs';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { ACCEPTED, ingestFile, IngestError } from './ingest.js';
 import { MAX_DOC_CHARS, MAX_FILE_BYTES } from '../../../shared/limits.js';
 
 const file = (content, name) => new File([content], name);
@@ -15,6 +17,18 @@ test('reads a Markdown file into chunks with headings', async () => {
   assert.equal(r.kind, 'md');
   assert.deepEqual(r.chunks.map((c) => [c.id, c.page, c.heading]), [['c1', null, 'Cells'], ['c2', null, 'Nucleus']]);
   assert.deepEqual(r.skippedPages, []);
+});
+
+test('reads a PDF into chunks with page positions, printed labels and skipped pages', async () => {
+  assert.ok(ACCEPTED.includes('.pdf'));
+  const pages = [];
+  const book = file(readFileSync(new URL('./fixtures/book.pdf', import.meta.url)), 'book.pdf');
+  const r = await ingestFile(book, { pdfjs, onProgress: (p) => pages.push(p.page) });
+  assert.equal(r.kind, 'pdf');
+  assert.deepEqual(r.chunks.map((c) => [c.id, c.page, c.pageLabel]), [['c1', 1, '37'], ['c2', 2, '38'], ['c3', 4, '40']]);
+  assert.equal(r.totalPages, 4); // the reader reports the whole document, skipped pages included
+  assert.deepEqual(r.skippedPages, [3]);
+  assert.deepEqual(pages, [1, 2, 3, 4]);
 });
 
 test('keeps the whole text, even far past the planning cap', async () => {
@@ -36,4 +50,8 @@ test('named errors', async () => {
 
 test('legacy formats are told to save as a supported type', async () => {
   await assert.rejects(ingestFile(file('x', 'old.doc')), /save it as PDF, DOCX or PPTX/i);
+});
+
+test('formats without pages report no page count', async () => {
+  assert.equal((await ingestFile(file('hello world', 'a.txt'))).totalPages, null);
 });

@@ -8,7 +8,7 @@ const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/mai
 const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 const run = (t) => `<w:r><w:t xml:space="preserve">${esc(t)}</w:t></w:r>`;
-const rtl = /[֐-׿]/;
+const rtl = /\p{Script=Hebrew}/u;
 const p = (t, { style, num } = {}) =>
   `<w:p><w:pPr>${style ? `<w:pStyle w:val="${style}"/>` : ''}${
     num ? `<w:numPr><w:ilvl w:val="0"/><w:numId w:val="${num}"/></w:numPr>` : ''

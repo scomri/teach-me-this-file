@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MAX_BODY_BYTES } from '../shared/limits.js';
 import { errorHandler, requestLogger } from './logger.js';
 import { echoRouter } from './routes/echo.js';
 
@@ -13,7 +14,7 @@ export function createApp({ log = console.log, streamMaxMs } = {}) {
   app.locals.streams = streams; // read by tests to assert cleanup
 
   app.use(requestLogger(log));
-  app.use(express.json());
+  app.use(express.json({ limit: MAX_BODY_BYTES }));
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api', echoRouter(log, streams, streamMaxMs));
