@@ -1,6 +1,5 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
-import { initialLesson, reduce } from '../lesson/lesson.js';
 import { requestPlan } from '../plan.js';
 import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
@@ -15,12 +14,10 @@ const MESSAGES = {
 const FALLBACK = "The plan couldn't be made. Try again.";
 
 // Teacher prompt in, read-only plan out. The plan lives in the lesson state (`lesson`, `dispatch`);
-// without them the component keeps its own, so it also runs on its own. This component keeps only the
-// request: its status, the last error, and the "file doesn't cover it" message (a plan-less result).
+// this component keeps only the request: its status, the last error, and the "file doesn't cover it"
+// message (a plan-less result).
 // `saveCount` counts successful settings saves: a save after a rejected key re-runs the request.
-export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings, lesson: given, dispatch: givenDispatch }) {
-  const own = useReducer(reduce, undefined, initialLesson);
-  const [lesson, dispatch] = givenDispatch ? [given, givenDispatch] : own;
+export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings, lesson, dispatch }) {
   const [state, setState] = useState({ status: 'idle' });
   const controller = useRef(null);
   // The newest props, for code that runs after an await and must not use a stale closure.
