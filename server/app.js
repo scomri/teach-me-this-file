@@ -5,11 +5,12 @@ import { MAX_BODY_BYTES } from '../shared/limits.js';
 import { errorHandler, requestLogger } from './logger.js';
 import { checkRouter } from './routes/check.js';
 import { echoRouter } from './routes/echo.js';
+import { planRouter } from './routes/plan.js';
 
 const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client/dist');
 
 // `log` is injectable so tests can capture output.
-export function createApp({ log = console.log, streamMaxMs, providerFetch, checkTimeoutMs } = {}) {
+export function createApp({ log = console.log, streamMaxMs, providerFetch, checkTimeoutMs, planTimeoutMs } = {}) {
   const app = express();
   const streams = new Map();
   app.locals.streams = streams; // read by tests to assert cleanup
@@ -19,6 +20,7 @@ export function createApp({ log = console.log, streamMaxMs, providerFetch, check
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api', checkRouter(providerFetch, checkTimeoutMs));
+  app.use('/api', planRouter(providerFetch, planTimeoutMs));
   app.use('/api', echoRouter(log, streams, streamMaxMs));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 

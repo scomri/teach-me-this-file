@@ -1,30 +1,14 @@
 import { Router } from 'express';
+import { MAX_MODEL_CHARS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
-
-// Some providers (OpenRouter) answer an unknown model with 400, not 404. The body is matched, never forwarded.
-const UNKNOWN_MODEL = /model_not_found|not a valid model|models?\b[^.]{0,80}?(not found|does not exist)|(invalid|unknown) model/i;
-// Gemini answers a bad key with 400 ("Please pass a valid API key"), not 401.
-const BAD_KEY = /valid api key|api key not valid|api_key_invalid/i;
-
-async function outcome(response) {
-  if (response.ok) return 'ok';
-  if ([401, 403].includes(response.status)) return 'invalid_key';
-  if (response.status === 404) return 'model_not_found';
-  if (response.status === 429) return 'rate_limited';
-  if (response.status === 400) {
-    const text = await response.text();
-    if (BAD_KEY.test(text)) return 'invalid_key';
-    if (UNKNOWN_MODEL.test(text)) return 'model_not_found';
-  }
-  return 'unreachable';
-}
+import { providerOutcome } from '../ai/errors.js';
 
 export function checkRouter(fetchImpl, timeoutMs = 10000) {
   const router = Router();
   router.post('/check', async (req, res) => {
     const { preset, evaluator, teacher } = req.body ?? {};
-    if (!Object.hasOwn(PRESETS, preset) || [evaluator, teacher].some(x => x !== undefined && (typeof x !== 'string' || x.length > 200))) {
+    if (!Object.hasOwn(PRESETS, preset) || [evaluator, teacher].some(x => x !== undefined && (typeof x !== 'string' || x.length > MAX_MODEL_CHARS))) {
       return res.status(400).json({ code: 'invalid_request' });
     }
     const apiKey = req.get('X-Api-Key')?.trim();
@@ -39,7 +23,7 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
         let code = 'unreachable';
         try {
           const response = await chatCompletion({preset, apiKey, model: req.body[role]?.trim() || PRESETS[preset][role], messages: [{role:'user',content:'Hi'}], signal: controller.signal}, fetchImpl);
-          code = await outcome(response);
+          code = await providerOutcome(response);
           if (!response.bodyUsed) await response.body?.cancel();
         } catch (error) {
           if (controller.signal.aborted) throw error;

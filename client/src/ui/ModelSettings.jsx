@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { MAX_MODEL_CHARS } from '../../../shared/limits.js';
 import { PRESETS } from '../../../shared/presets.js';
 import { loadSettings, saveSettings } from '../settings.js';
 
@@ -8,7 +9,9 @@ const notices = {
 };
 const storageUnavailableNotice = 'Browser storage is unavailable. Settings are kept in memory for this visit; close this tab to clear any previously remembered key.';
 
-export default function ModelSettings() {
+// onSettings gets the current settings whenever they change; onSaved the new ones after a successful save.
+// ref.current.open() opens the dialog from outside.
+export default function ModelSettings({ ref, onSettings, onSaved }) {
   const [{settings:initialSettings,storageUnavailable}] = useState(loadSettings);
   const [settings, setSettings] = useState(initialSettings);
   const [draft, setDraft] = useState(settings);
@@ -32,6 +35,8 @@ export default function ModelSettings() {
     dialog.current.showModal();
   }
   function close() { cancelCheck(); dialog.current.close(); }
+  useImperativeHandle(ref, () => ({ open }));
+  useEffect(() => { onSettings?.(settings); }, [settings]);
   function containFocus(event) {
     if (event.key !== 'Tab') return;
     const controls = [...dialog.current.querySelectorAll('button, input, select, a[href]')].filter(el => !el.disabled);
@@ -92,7 +97,7 @@ export default function ModelSettings() {
     const stored = saveSettings(next);
     setStorageWarning(stored ? '' : storageUnavailableNotice);
     if (!stored) next.remember = false;
-    setSettings(next); setDraft(next); close();
+    setSettings(next); setDraft(next); onSaved?.(next); close();
   }
 
   const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ${{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}`;
@@ -106,7 +111,7 @@ export default function ModelSettings() {
         {storageWarning && <p role="status" className="text-sm text-amber-900">{storageWarning}</p>}
         <label className="flex flex-col gap-1">Preset<select autoFocus value={draft.preset} onChange={e => change({preset:e.target.value,evaluator:PRESETS[e.target.value].evaluator,teacher:PRESETS[e.target.value].teacher})} className="w-full rounded border p-2">{Object.entries(PRESETS).map(([id,p]) => <option key={id} value={id}>{p.name}</option>)}</select></label>
         <div><label htmlFor="model-key" className="block">API key</label><div className="mt-1 flex gap-2"><input id="model-key" type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={e => change({apiKey:e.target.value})} autoComplete="off" required aria-invalid={error?.field === 'apiKey'} aria-describedby={error?.field === 'apiKey' ? 'settings-error' : undefined} className="min-w-0 flex-1 rounded border p-2"/><button type="button" aria-pressed={showKey} onClick={() => setShowKey(v=>!v)} className="rounded border px-3">{showKey ? 'Hide' : 'Show'}</button></div><a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-sm underline">Get a key from {preset.name}</a></div>
-        {['evaluator','teacher'].map(role => <label key={role} className="flex flex-col gap-1">{role === 'evaluator' ? 'Evaluator model' : 'Teacher model'}<input value={draft[role]} placeholder={preset[role]} maxLength={200} onChange={e=>change({[role]:e.target.value})} aria-invalid={error?.field === role} aria-describedby={error?.field === role ? 'settings-error' : undefined} className="min-w-0 w-full rounded border p-2"/></label>)}
+        {['evaluator','teacher'].map(role => <label key={role} className="flex flex-col gap-1">{role === 'evaluator' ? 'Evaluator model' : 'Teacher model'}<input value={draft[role]} placeholder={preset[role]} maxLength={MAX_MODEL_CHARS} onChange={e=>change({[role]:e.target.value})} aria-invalid={error?.field === role} aria-describedby={error?.field === role ? 'settings-error' : undefined} className="min-w-0 w-full rounded border p-2"/></label>)}
         <p className="text-sm text-slate-600">Blank model fields use the preset defaults shown above.</p>
         <label className="flex items-start gap-2"><input type="checkbox" checked={draft.remember} onChange={e=>change({remember:e.target.checked})} className="mt-1"/>Remember for this tab</label>
         <p className="text-sm text-slate-600">Your key stays in memory unless you opt in. Remembered keys can be read by scripts on this site and last until this tab closes. Uncheck to remove the saved key.</p>

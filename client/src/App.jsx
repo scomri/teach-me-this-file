@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
+import PlanLesson from './ui/PlanLesson.jsx';
 
 export default function App() {
   const [api, setApi] = useState('checking...');
@@ -8,6 +9,11 @@ export default function App() {
   const [out, setOut] = useState('');
   const [status, setStatus] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [doc, setDoc] = useState(null);
+  const [settings, setSettings] = useState(null);
+  const [saveCount, setSaveCount] = useState(0);
+  const [prompt, setPrompt] = useState(''); // lives here so it survives picking another file
+  const settingsRef = useRef(null);
   const abortRef = useRef(null);
   const idRef = useRef(null);
   const stopRef = useRef(false); // Stop clicked before the start event arrived
@@ -84,10 +90,15 @@ export default function App() {
   return (
     <main className="mx-auto max-w-xl p-8">
       <h1 className="text-2xl font-semibold">Teach Me This File</h1>
-      <ModelSettings />
+      <ModelSettings
+        ref={settingsRef}
+        onSettings={setSettings}
+        onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
+      />
       <p className="mt-2 text-slate-600">API: {api}</p>
 
-      <FileIngest />
+      <FileIngest onDoc={setDoc} />
+      {doc && settings && <PlanLesson doc={doc} settings={settings} saveCount={saveCount} prompt={prompt} setPrompt={setPrompt} openSettings={() => settingsRef.current.open()} />}
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"
