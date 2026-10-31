@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { initialLesson, reduce } from './lesson/lesson.js';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
 import PlanLesson from './ui/PlanLesson.jsx';
@@ -9,10 +10,9 @@ export default function App() {
   const [out, setOut] = useState('');
   const [status, setStatus] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [doc, setDoc] = useState(null);
+  const [lesson, dispatch] = useReducer(reduce, undefined, initialLesson);
   const [settings, setSettings] = useState(null);
   const [saveCount, setSaveCount] = useState(0);
-  const [prompt, setPrompt] = useState(''); // lives here so it survives picking another file
   const settingsRef = useRef(null);
   const abortRef = useRef(null);
   const idRef = useRef(null);
@@ -103,8 +103,8 @@ export default function App() {
       />
       <p className="mt-2 text-slate-600">API: {api}</p>
 
-      <FileIngest onDoc={setDoc} />
-      {doc && settings && <PlanLesson doc={doc} settings={settings} saveCount={saveCount} prompt={prompt} setPrompt={setPrompt} openSettings={() => settingsRef.current.open()} />}
+      <FileIngest onDoc={(source) => dispatch({ type: 'fileRead', source })} />
+      {lesson.source && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"

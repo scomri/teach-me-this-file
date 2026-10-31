@@ -69,7 +69,7 @@ export function resolveConstraints(reply, { promptBlank = false } = {}) {
 const normalizeTitle = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 // reply: the parsed model output. chunkIds: Set of ids in the document.
-// Returns { ok: true, plan, constraints, coverage, coverageNote } or { ok: false, errors } (strings for the
+// Returns { ok: true, plan, constraints, coverage, coverageNote, documentLanguage } or { ok: false, errors } (strings for the
 // repair message). With coverage 'none' the plan is null. A blank prompt names no topic and a whole-file
 // request drops it, so either way the file cannot fail to cover it: coverage is 'full' and the model's
 // answer is ignored.
@@ -97,7 +97,8 @@ export function validatePlan(reply, chunkIds, { promptBlank = false, wholeFile =
     if (typeof c.outsideSources !== 'boolean') errors.push('constraints.outsideSources must be a boolean');
   }
   for (const k of ['promptLanguage', 'documentLanguage']) if (typeof reply?.[k] !== 'string') errors.push(`${k} must be a string`);
-  if (coverage === 'none') return errors.length ? { ok: false, errors } : { ok: true, plan: null, constraints, coverage, coverageNote };
+  const documentLanguage = languageName(reply?.documentLanguage);
+  if (coverage === 'none') return errors.length ? { ok: false, errors } : { ok: true, plan: null, constraints, coverage, coverageNote, documentLanguage };
   const { title, steps } = reply?.plan ?? {};
   const field = (value, cap, label) => {
     if (typeof value !== 'string' || !value.trim()) errors.push(`${label} must be a non-empty string`);
@@ -148,5 +149,5 @@ export function validatePlan(reply, chunkIds, { promptBlank = false, wholeFile =
   }
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, plan: { title: planTitle, steps: out }, constraints, coverage, coverageNote };
+  return { ok: true, plan: { title: planTitle, steps: out }, constraints, coverage, coverageNote, documentLanguage };
 }

@@ -65,9 +65,9 @@ test('requestPlan sends wholeFile only when asked, and accepts a coverage-none r
 });
 
 test('request notes: capped, shorter, steps capped, outside sources', () => {
-  const plan = (n) => ({ steps: new Array(n) });
-  const c = (minutes, maxSteps, extra) => ({ minutes, maxSteps, steps: null, outsideSources: false, ...extra });
-  const notes = (n, constraints) => requestNotes(plan(n), constraints);
+  // The plan carries its ceiling and what was asked beyond it; the teacher constraints carry the minutes.
+  const c = (minutes, maxSteps, requested) => ({ minutes, maxSteps, requested: { steps: null, outsideSources: false, ...requested } });
+  const notes = (n, { minutes, maxSteps, requested }) => requestNotes({ steps: new Array(n), maxSteps, requested }, { minutes });
   assert.deepEqual(notes(10, c(45, 10)), ['45 min requested, capped at 10 steps (~25 min)']);
   assert.deepEqual(notes(4, c(25, 10)), ['This file supports 4 steps (~10 min), shorter than the 25 min requested']);
   assert.equal(notes(1, c(25, 10))[0], 'This file supports 1 step (~3 min), shorter than the 25 min requested');
@@ -86,5 +86,4 @@ test('request notes: capped, shorter, steps capped, outside sources', () => {
   assert.deepEqual(notes(5, c(null, 5)), []);
   assert.deepEqual(notes(6, c(15, 6)), []);
   assert.deepEqual(notes(10, c(25, 10)), []);
-  assert.deepEqual(notes(5, { minutes: null, maxSteps: 5 }), []); // a reply from before these fields existed
 });

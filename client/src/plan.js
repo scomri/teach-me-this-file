@@ -63,9 +63,11 @@ export function sourcePages(step, doc) {
 export const estimatedMinutes = (plan) => Math.round(plan.steps.length * MINUTES_PER_STEP);
 
 // Where the plan differs from what the teacher asked for, for the plan screen. The plan is never padded and
-// code applies the limits, so each note says which request was not followed, and why.
+// code applies the limits, so each note says which request was not followed, and why. The plan carries
+// its step ceiling and the requests it bounded (see lesson/lesson.js); the constraints carry the minutes.
 export function requestNotes(plan, constraints) {
-  const { minutes, steps, outsideSources, maxSteps } = constraints;
+  const { minutes } = constraints;
+  const { maxSteps, requested: { steps, outsideSources } } = plan;
   const n = plan.steps.length;
   const length = (count) => `${count} ${count === 1 ? 'step' : 'steps'} (~${Math.round(count * MINUTES_PER_STEP)} min)`;
   const notes = [];

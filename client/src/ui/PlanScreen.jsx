@@ -13,9 +13,10 @@ export function NoCoverage({ coverageNote, busy, onPlanWholeFile }) {
   );
 }
 
-// Read-only view of a plan result ({ plan, constraints, coverage, coverageNote }). The text is model-written,
-// so each element gets its own direction.
-export default function PlanScreen({ result: { plan, constraints, coverage, coverageNote }, doc, busy, onRegenerate }) {
+// Read-only view of a plan (with its coverage) and the constraints it was made under. The text is
+// model-written, so each element gets its own direction.
+export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate }) {
+  const { coverage, coverageNote } = plan;
   const facts = [constraints.language, constraints.audience, constraints.style].filter(Boolean);
   const notes = requestNotes(plan, constraints);
   return (
