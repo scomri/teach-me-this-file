@@ -5,11 +5,12 @@ import { parseHTML } from 'linkedom';
 import react from '@vitejs/plugin-react';
 import { createServer } from 'vite';
 import React, { act } from 'react';
-import { createRoot } from 'react-dom/client';
 
 test('an HTML 503 response shows its HTTP status', async (t) => {
   const { window, document } = parseHTML('<html><body><div id="root"></div></body></html>');
   Object.assign(globalThis, { window, document, HTMLElement: window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true });
+  document.oninput = null;
+  const { createRoot } = await import('react-dom/client');
   window.HTMLElement.prototype.showModal = function () {};
   window.HTMLElement.prototype.close = function () {};
   let abortBody = false;
@@ -24,7 +25,7 @@ test('an HTML 503 response shows its HTTP status', async (t) => {
   t.after(() => act(() => root.unmount()));
   await act(async () => root.render(React.createElement(App)));
   const input = container.querySelector('textarea');
-  await act(async () => { input[Object.keys(input).find((key) => key.startsWith('__reactProps'))].onChange({ target: { value: 'hello' } }); });
+  await act(async () => { Object.getOwnPropertyDescriptor(Object.getPrototypeOf(input), 'value').set.call(input, 'hello'); input.dispatchEvent(new window.Event('input', { bubbles: true })); });
   const button = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Send');
   await act(async () => { button.dispatchEvent(new window.Event('click', { bubbles: true })); await new Promise((r) => setTimeout(r, 0)); });
   assert.match(container.textContent, /error: HTTP 503/);
