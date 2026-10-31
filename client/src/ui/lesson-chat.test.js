@@ -24,7 +24,7 @@ const steps = [
   { id: 's2', title: 'Sugar', objective: 'o2', chunkIds: ['c2'], checkQuestion: 'Why sugar?', expected: ['p'] },
 ];
 const received = {
-  type: 'planReceived', plan: { title: 'A lesson', steps }, coverage: 'full', coverageNote: '', documentLanguage: 'Hebrew',
+  type: 'planReceived', plan: { title: 'A lesson', steps, validated: true }, coverage: 'full', coverageNote: '', documentLanguage: 'Hebrew',
   constraints: { language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5 },
 };
 let planEvent = received; // a test may swap the plan before mounting
@@ -56,7 +56,7 @@ function liveStream(signal) {
 }
 
 async function mount(steps) {
-  planEvent = steps ? { ...received, plan: { title: 'A lesson', steps } } : received;
+  planEvent = steps ? { ...received, plan: { title: 'A lesson', steps, validated: true } } : received;
   const teach = []; // one per /api/teach request: { body, headers, stream }
   const cancelled = [];
   const evaluate = []; // one per /api/evaluate request: { body, headers, answer(evaluation), fail(code, status) }
@@ -110,7 +110,7 @@ test('Start is enabled on a plan and sends an opening request built from the ste
   assert.deepEqual(body.chunks.map((c) => c.id), ['c1', 'c2']);
   assert.equal(body.lesson.language, 'English');
   assert.equal(body.lesson.documentLanguage, 'Hebrew');
-  assert.ok(!JSON.stringify(body).includes('the secret key point'), 'an opening request carries no key points');
+  assert.deepEqual(body.protectedPoints, ['the secret key point']);
   assert.match(ui.text(), /Step 1 of 2/);
   await ui.unmount();
 });
@@ -273,7 +273,7 @@ test('the tutor message cites all passages supplied to the teacher', async () =>
   await ui.feed(() => next.answer({ ...right, relevantChunkIds: ['c1'] }));
   assert.equal(ui.teach[2].body.transition, 'advance');
   await reply(ui, 2);
-  const sources = [...ui.container.querySelectorAll('li')].map((li) => /Source: (.*)$/.exec(li.textContent)?.[1]);
+  const sources = [...ui.container.querySelectorAll('li')].map((li) => /Source: (.*)$/.exec(li.querySelector('summary')?.textContent ?? '')?.[1]);
   assert.equal(sources.at(-1), 'page 3'); // the next step's chunks, not the evaluator's id for the previous step
   await ui.click('Regenerate');
   await reply(ui, 3);

@@ -2,14 +2,16 @@
 
 ## Context
 
-A tutor must respond to student messages while keeping progress independent of the model's prose and of a stateless server. Document and student text are untrusted, and model output can be malformed.
+A tutor must respond to student messages while keeping progress independent of model prose and of a stateless server. Document, student and model-written plan text are untrusted. Questions and hints can reveal unanswered key points even when the prompt asks the model not to do so.
 
 ## Decision
 
-The client owns the plan, progress and messages. For a student message, `POST /api/evaluate` asks the evaluator for a structured intent, key-point indexes and relevant chunk ids. The server validates the result and permits one schema repair. The client reducer combines points across answers, chooses the transition and applies it before `POST /api/teach` streams the corresponding reply. A second schema mismatch becomes an uncounted nudge; provider failures offer Retry. An opening needs only a teaching call.
+The client owns the plan, progress and messages. The evaluator screens all plan questions together against their key points before Start; a flagged plan may be repaired once and every question is checked again. Restored plans without a validation marker are checked before Start, while lessons already in progress retain their state. A failed or uncertain check blocks Start.
 
-The server builds prompts from structured request data, fences source and conversation as data, and supplies the current step's passages. A normal student turn makes two provider requests; one schema repair and one shared rate-limit retry bring the maximum to four. Stop preserves the chosen transition; Regenerate repeats only the teaching reply. The lesson is saved in IndexedDB without model settings or the API key.
+For a student message, `POST /api/evaluate` returns an intent, key-point indexes and relevant chunk ids. The server validates it and permits one schema repair. The client reducer combines points, chooses the transition and applies it before requesting the reply. Protected drafts (opening, advance, nudge, scaffold, answer to a question and redirect) are buffered on the server and checked by the evaluator against the current step's unanswered points. Only approved text reaches the student; a failed, uncertain or rejected check yields a fixed fallback. Reveal and recap remain streamed. The student can open cited source passages even when they contain answers.
+
+A normal protected turn permits one evaluation, one teaching draft, one disclosure check, one evaluation schema repair and one shared automatic 429 retry: at most five provider requests. An opening or regenerated protected reply permits a draft, a check and one shared 429 retry (at most three requests). A plan allows at most two generations and two disclosure checks; plan checks have no automatic 429 retry. Stop aborts the active operation without reversing the transition; Regenerate repeats only the reply. The lesson is saved in IndexedDB without model settings or the API key.
 
 ## Consequences
 
-Progress and retry behavior are testable without a model, survive refresh and do not depend on a server session. Two calls add latency and quota use; evaluations and teaching still depend on model judgment and prompt compliance. The safety floor and answer withholding are prompt rules, not independently verified guarantees. There is no per-step token budget, so large passages can still exhaust provider quotas.
+The checks add latency and cost. They are best effort, not a guarantee: the evaluator may miss a disclosure or reject a useful hint. Fallbacks are provided in English, Hebrew and Arabic; unrecognized languages use English. Document, conversation and model-written fields are treated as data, but the safety floor and model judgments still depend on model behavior. There is no per-step token budget, so large passages can exhaust quotas.

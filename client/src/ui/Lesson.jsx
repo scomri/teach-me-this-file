@@ -186,9 +186,12 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
           const pages = sourcePages(m, source);
           return (
             <li key={i} className="rounded border border-slate-200 p-3">
-              <p dir="auto" className="whitespace-pre-wrap">{m.text}{m.status === 'streaming' && !m.text && 'Thinking…'}</p>
+              <p dir="auto" className="whitespace-pre-wrap">{m.text}{m.status === 'streaming' && !m.text && 'Preparing reply…'}</p>
               {m.status === 'stopped' && <p className="mt-1 text-xs text-slate-500">Stopped.</p>}
-              {pages && <p className="mt-2 text-xs text-slate-500">Source: {pages}</p>}
+              {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-slate-600">
+                <summary>Source{pages ? `: ${pages}` : ' passages'}</summary>
+                {source.chunks.filter((c) => m.chunkIds.includes(c.id)).map((c) => <p key={c.id} dir="auto" className="mt-2 whitespace-pre-wrap">{c.text}</p>)}
+              </details>}
             </li>
           );
         })}

@@ -4,7 +4,7 @@ import { initialLesson, reduce, normalizeSaved, savedRecord, splitSaved, joinSav
 import { shouldSave, createWriter, coalesce, writeOp } from './persist.js';
 
 const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text: 'Photosynthesis.' }] };
-const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
+const plan = { validated: true, title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
 const constraints = { language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5 };
 const planned = () => reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { type: 'planReceived', plan, constraints, coverage: 'full', coverageNote: null });
 const midLesson = () => reduce(reduce(planned(), { type: 'lessonStarted' }), { type: 'teachStarted', stepId: 's1', transition: 'open', chunkIds: ['c1'] });

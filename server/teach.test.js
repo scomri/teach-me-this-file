@@ -6,7 +6,7 @@ import { MAX_DOC_CHARS } from '../shared/limits.js';
 
 const KEY = 'sk-secret-teach-key';
 const request = (over = {}) => ({
-  preset: 'gemini', transition: 'opening',
+  preset: 'gemini', transition: 'opening', protectedPoints: ['energy'],
   lesson: { language: 'English', audience: null, style: null, documentLanguage: 'Hebrew' },
   step: { index: 1, total: 3, title: 'Light', objective: 'Explain light', checkQuestion: 'Why light?' },
   chunks: [{ id: 'c1', page: 2, text: 'Photosynthesis turns light into sugar.' }],
@@ -35,7 +35,9 @@ function providerStream(chunks, hang) {
 function provider(words = ['Plants ', 'eat ', 'light.'], { hang = false, status = 200 } = {}) {
   const calls = [];
   const fn = async (url, init) => {
-    const call = { url, body: JSON.parse(init.body), aborted: false };
+    const body = JSON.parse(init.body);
+    if (body.response_format?.json_schema?.name === 'disclosure_check') return Response.json({ choices: [{ message: { content: JSON.stringify({ flagged: [], uncertain: false }) } }] });
+    const call = { url, body, aborted: false };
     init.signal?.addEventListener('abort', () => { call.aborted = true; });
     calls.push(call);
     if (status !== 200) return new Response('{}', { status });
@@ -62,7 +64,7 @@ test('the reply streams as start, text chunks, then done', async (t) => {
   const got = events(await res.text());
   assert.equal(got[0][0], 'start');
   assert.match(got[0][1].id, /^[\w-]+$/);
-  assert.deepEqual(got.slice(1, -1), [['message', { text: 'Plants ' }], ['message', { text: 'eat ' }], ['message', { text: 'light.' }]]);
+  assert.deepEqual(got.slice(1, -1), [['message', { text: 'Plants eat light.' }]]);
   assert.deepEqual(got.at(-1), ['done', {}]);
   assert.equal(providerFetch.calls.length, 1);
   assert.equal(providerFetch.calls[0].body.stream, true);
@@ -130,7 +132,7 @@ test('cancel ends the stream and aborts the upstream call', async (t) => {
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let seen = '';
-  while (!seen.includes('Plants')) seen += dec.decode((await reader.read()).value);
+  while (!seen.includes('event: start')) seen += dec.decode((await reader.read()).value);
   const id = /"id":"([^"]+)"/.exec(seen)[1];
   assert.equal((await fetch(`${url}/api/streams/${id}/cancel`, { method: 'POST' })).status, 204);
   assert.ok(await waitFor(() => providerFetch.calls[0].aborted), 'upstream call aborted');

@@ -7,7 +7,7 @@ const MAX_REPLY_ECHO = 20_000; // longest rejected reply sent back in the repair
 // File text can never close the fence: these tags, opening and closing, lose their `<`. Matching is
 // case-insensitive and tolerates whitespace and zero-width characters around the slash and the name, which
 // a model may still read as the tag ("</ student_answer>", "<" + U+200B + "/student_answer>").
-export const FENCE_TAGS = ['chunk', 'outline_entry', 'source_document', 'step_data', 'answered_step', 'recap_data', 'conversation', 'tutor_message', 'earlier_answer', 'student_answer'];
+export const FENCE_TAGS = ['chunk', 'outline_entry', 'source_document', 'step_data', 'answered_step', 'recap_data', 'conversation', 'tutor_message', 'earlier_answer', 'student_answer', 'disclosure_data'];
 const ZERO_WIDTH = [0x200b, 0x200c, 0x200d, 0x2060, 0xfeff].map((c) => String.fromCharCode(c)).join('');
 const GAP = String.raw`[\s${ZERO_WIDTH}]*`;
 const FENCE = new RegExp(`<${GAP}(/?)${GAP}(${FENCE_TAGS.join('|')})`, 'gi');

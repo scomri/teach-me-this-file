@@ -15,7 +15,7 @@ export function NoCoverage({ coverageNote, busy, onPlanWholeFile }) {
 
 // Read-only view of a plan (with its coverage) and the constraints it was made under. The text is
 // model-written, so each element gets its own direction.
-export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate, onStart }) {
+export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate, onStart, startAllowed, onValidate, needsValidation, noKey }) {
   const { coverage, coverageNote } = plan;
   const facts = [constraints.language, constraints.audience, constraints.style].filter(Boolean);
   const notes = requestNotes(plan, constraints);
@@ -57,9 +57,10 @@ export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate,
         <button className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40" onClick={onRegenerate} disabled={busy}>
           Regenerate
         </button>
-        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={onStart} disabled={busy}>
+        {needsValidation && <button className="rounded border border-slate-300 px-3 py-1 disabled:opacity-40" onClick={onValidate} disabled={busy || noKey}>Check plan</button>}
+        {!needsValidation && <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={onStart} disabled={busy || !startAllowed}>
           Start
-        </button>
+        </button>}
       </div>
     </article>
   );

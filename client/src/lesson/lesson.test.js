@@ -117,7 +117,7 @@ test('an unknown event leaves the state as it is', () => {
 
 // Teaching: start, then one streamed tutor reply at a time.
 const two = { ...plan, steps: [plan.steps[0], { ...plan.steps[0], id: 's2', title: 'Two' }] };
-const planned = (p = plan) => reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { ...received, plan: p });
+const planned = (p = plan) => reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { ...received, plan: { ...p, validated: true } });
 const begin = { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] };
 
 test('lessonStarted opens step 1 and leaves the other steps pending', () => {
