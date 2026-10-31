@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). Slice 1 in progress: file ingestion (PDF, DOCX, PPTX, TXT and MD built), model settings with a key and model check (`/api/check`), and planning (`/api/plan`, read-only plan screen), with an outline for documents too long for one request and a coverage check (full, partial, none) plus notes on requests the app does not follow; Start opens step 1 and streams the tutor's opening reply (`/api/teach`); a lesson resumes after a refresh (IndexedDB); answering a check question (`/api/evaluate`, then advance, nudge, reveal, Continue and recap) is built; the other student intents, the evaluator-failure fallback and the turn budget are next. Planning notes are kept outside version control.
+Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). File ingestion, model settings, lesson planning and the tutor loop are built. The tutor evaluates answers and other student intents, streams the selected reply, and applies a shared turn budget; lesson progress resumes after a refresh through IndexedDB. Planning notes are kept outside version control.
 
 Commands (Node 24):
 
@@ -54,7 +54,7 @@ Key design rules:
 - **Client owns lesson state.** Plan and progress live in app state, not in chat history. The server is stateless: each request carries what it needs. This survives free-tier cold starts.
 - **LLM proposes, code disposes.** Per student message: a small structured evaluation call returns an intent (`answer | asks_for_answer | off_topic | question`), the key points met and the relevant chunk ids; code derives `correct`, `partial` or `wrong` from the key points, and the state machine decides the transition; then a streamed teaching reply is generated for that transition only.
 - **Lesson length is a ceiling, never padded.** Steps ≤ minutes ÷ 2.5, clamped to 1–10 (5 with no minutes), from `shared/limits.js`. There is no minimum lesson length. Requests the app does not follow (more steps than the ceiling, outside sources, a topic the file lacks) are bounded by code and the plan screen says so.
-- **Grounding:** the tutor teaches only from the current step's source chunks. Chunks carry page/id so the UI can show the source passage behind each message.
+- **Grounding:** the tutor teaches only from the current step's source chunks. Tutor messages cite all chunks supplied to the teacher; the UI shows their pages or sections.
 - **File text is content, not instructions.** Delimit it in prompts. Test with a file containing "ignore your instructions".
 - **Streaming:** POST + `fetch` ReadableStream. Client uses `AbortController` for Stop; server aborts the upstream provider call on client disconnect.
 
