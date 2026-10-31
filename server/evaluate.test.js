@@ -53,7 +53,7 @@ test('a turn with repair and a rate limit ends on the second 429 within four pro
   const teaching = await fetch(`${url}/api/teach`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': KEY },
     body: JSON.stringify({
-      preset: 'gemini', transition: 'nudge', rateLimitRetried: evaluated.rateLimitRetried,
+      preset: 'gemini', transition: 'nudge', protectedPoints: ['it makes sugar'], rateLimitRetried: evaluated.rateLimitRetried,
       lesson: {}, step: { index: 1, total: 1, title: 'Light', objective: 'Explain light', checkQuestion: 'Why light?' },
       chunks: request().chunks, answered: { title: 'Light', checkQuestion: 'Why light?', expected: request().step.expected, pointsMet: [1] },
     }),

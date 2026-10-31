@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
-import { requestPlan } from '../plan.js';
+import { checkPlan, requestPlan } from '../plan.js';
 import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
 const MESSAGES = {
@@ -9,6 +9,7 @@ const MESSAGES = {
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   plan_invalid: "The model didn't return a usable plan. Try again, or change the request.",
+  plan_check_failed: "The plan's questions could not be checked for answer disclosure. Retry the check or regenerate the whole plan.",
   document_too_long: 'The plan request was too large for the server. Try a shorter file, or a file with fewer pages.',
 };
 const FALLBACK = "The plan couldn't be made. Try again.";
@@ -50,7 +51,20 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         dispatch({ type: 'planCleared' }); // a plan made with the old key is dropped
         return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt });
       }
-      setState((s) => ({ ...s, status: 'error', code: error.code }));
+      setState((s) => ({ ...s, status: 'error', code: error.code, flagged: error.flagged }));
+    }
+  }
+
+  async function validateRestored() {
+    controller.current?.abort();
+    const ac = new AbortController(); controller.current = ac;
+    setState({ status: 'checking' });
+    try {
+      await checkPlan({ plan: lesson.plan, settings, signal: ac.signal });
+      dispatch({ type: 'planValidated' });
+      setState({ status: 'done' });
+    } catch (error) {
+      if (!ac.signal.aborted) setState({ status: 'error', code: error.code, flagged: error.flagged });
     }
   }
 
@@ -67,7 +81,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
 
   const { status, coverage } = state;
   const { plan } = lesson;
-  const planning = status === 'planning';
+  const planning = status === 'planning' || status === 'checking';
   const noKey = !settings.apiKey.trim();
 
   return (
@@ -91,6 +105,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       </div>
 
       <div aria-live="polite">
+        {state.flagged?.length > 0 && <p role="alert">Check questions may reveal answers in steps {state.flagged.join(', ')}. Regenerate the whole plan.</p>}
         {status === 'key_rejected' && (
           <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
             Your key was rejected.{' '}
@@ -112,6 +127,10 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         <PlanScreen
           plan={plan} constraints={lesson.teacher.constraints} doc={doc} busy={planning}
           onStart={() => dispatch({ type: 'lessonStarted' })}
+          startAllowed={plan.validated === true && !noKey}
+          onValidate={validateRestored}
+          needsValidation={plan.validated !== true}
+          noKey={noKey}
           onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
         />
       )}

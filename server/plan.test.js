@@ -122,7 +122,8 @@ const wrap = (obj) => new Response(JSON.stringify({ choices: [{ message: { conte
 
 async function setup(t, providerFetch, options = {}) {
   const lines = [];
-  const server = createApp({ log: (x) => lines.push(x), providerFetch, ...options }).listen(0);
+  const wrappedProvider = (url, init) => JSON.parse(init.body).response_format?.json_schema?.name === 'disclosure_check' ? wrap({ flagged: [], uncertain: false }) : providerFetch(url, init);
+  const server = createApp({ log: (x) => lines.push(x), providerFetch: wrappedProvider, ...options }).listen(0);
   t.after(() => server.close());
   const plan = (body, key = 'secret-key') => fetch(`http://127.0.0.1:${server.address().port}/api/plan`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Api-Key': key } : {}) },

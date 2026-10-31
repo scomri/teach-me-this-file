@@ -19,7 +19,8 @@ const outline = [
 const chunkIds = Array.from({ length: 80 }, (_, i) => `c${i + 1}`);
 
 async function setup(t, providerFetch) {
-  const server = createApp({ log: () => {}, providerFetch }).listen(0);
+  const wrappedProvider = (url, init) => JSON.parse(init.body).response_format?.json_schema?.name === 'disclosure_check' ? wrap({ flagged: [], uncertain: false }) : providerFetch(url, init);
+  const server = createApp({ log: () => {}, providerFetch: wrappedProvider }).listen(0);
   t.after(() => server.close());
   return (body) => fetch(`http://127.0.0.1:${server.address().port}/api/plan`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': 'secret-key' },
