@@ -5,6 +5,7 @@ import { MAX_BODY_BYTES } from '../shared/limits.js';
 import { errorHandler, requestLogger } from './logger.js';
 import { checkRouter } from './routes/check.js';
 import { echoRouter } from './routes/echo.js';
+import { evaluateRouter } from './routes/evaluate.js';
 import { planRouter } from './routes/plan.js';
 import { teachRouter } from './routes/teach.js';
 import { cancelRouter } from './streams.js';
@@ -12,7 +13,7 @@ import { cancelRouter } from './streams.js';
 const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client/dist');
 
 // `log` is injectable so tests can capture output.
-export function createApp({ log = console.log, streamMaxMs, providerFetch, checkTimeoutMs, planTimeoutMs } = {}) {
+export function createApp({ log = console.log, streamMaxMs, providerFetch, checkTimeoutMs, planTimeoutMs, evaluateTimeoutMs } = {}) {
   const app = express();
   const streams = new Map();
   app.locals.streams = streams; // read by tests to assert cleanup
@@ -23,6 +24,7 @@ export function createApp({ log = console.log, streamMaxMs, providerFetch, check
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api', checkRouter(providerFetch, checkTimeoutMs));
   app.use('/api', planRouter(providerFetch, planTimeoutMs));
+  app.use('/api', evaluateRouter(providerFetch, evaluateTimeoutMs));
   app.use('/api', echoRouter(log, streams, streamMaxMs));
   app.use('/api', teachRouter(providerFetch, log, streams, streamMaxMs));
   app.use('/api', cancelRouter(streams));

@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
+import { requestEvaluation } from '../evaluate.js';
+import { decide, reduce } from '../lesson/lesson.js';
 import { sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
 
@@ -9,27 +12,33 @@ const MESSAGES = {
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   timeout: 'The reply took too long. Try again.',
+  evaluation_invalid: "The tutor couldn't read that answer. Try again.",
 };
 const FALLBACK = "The tutor couldn't reply. Try again.";
 
 // The lesson chat. The messages and progress live in the lesson state (`lesson`, `dispatch`); this
-// component keeps the request in flight and the last error. It dispatches events and renders state.
+// component keeps the requests in flight, the draft and the last error. It dispatches events and renders state.
 export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   const { plan, progress, source, messages } = lesson;
   const [errorCode, setErrorCode] = useState(null);
+  const [draft, setDraft] = useState('');
+  const [evaluating, setEvaluating] = useState(false);
   const current = useRef(null); // the stream in flight: { ac, id, stopped }
+  const grading = useRef(null); // the evaluation in flight: its AbortController
   const latest = useRef({});
   latest.current = { lesson, settings };
 
-  async function stream(transition, stepId) {
+  // `snapshot`: the lesson as this reply sees it. The reducer has not rendered an event dispatched a moment
+  // ago, and a reply must see the progress that event applied.
+  async function stream(transition, stepId, snapshot = latest.current.lesson) {
     const ac = new AbortController();
     const run = { ac, id: null, stopped: false };
     current.current = run;
     setErrorCode(null);
     try {
-      const { lesson: now, settings: s } = latest.current;
+      const s = latest.current.settings;
       await streamTeach({
-        request: teachRequest({ lesson: now, transition, settings: s, stepId }), apiKey: s.apiKey, signal: ac.signal,
+        request: teachRequest({ lesson: snapshot, transition, settings: s, stepId }), apiKey: s.apiKey, signal: ac.signal,
         onStart(id) { run.id = id; if (run.stopped) halt(run); },
         onText: (text) => { if (current.current === run) dispatch({ type: 'teachChunk', text }); },
       });
@@ -59,10 +68,63 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
     if (run.id) halt(run); // else onStart halts it when the stream is named
   }
 
+  // Starts a tutor reply: the message shows at once, then streams.
+  function reply(transition, stepId, chunkIds, snapshot) {
+    dispatch({ type: 'teachStarted', stepId, transition, chunkIds });
+    stream(transition, stepId, snapshot);
+  }
+
   function open() {
     const step = plan.steps.find((s) => s.id === progress.current);
-    dispatch({ type: 'teachStarted', stepId: step.id, transition: 'opening', chunkIds: step.chunkIds });
-    stream('opening', step.id);
+    reply('opening', step.id, step.chunkIds);
+  }
+
+  // Evaluates the student's `message`, which `base` already holds. The evaluation is applied to progress
+  // before the reply streams, so a Stop or a failed reply cannot undo the move. The extension point for the
+  // other intents is the `!transition` branch.
+  async function grade(message, base) {
+    const ac = new AbortController();
+    grading.current = ac;
+    setEvaluating(true);
+    setErrorCode(null);
+    try {
+      const evaluation = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
+      if (grading.current !== ac) return;
+      const event = { type: 'evaluated', evaluation };
+      const after = reduce(base, event);
+      dispatch(event);
+      const { transition, replyStepId } = decide(base, evaluation);
+      if (!transition) return;
+      const named = after.messages.at(-1).relevantChunkIds;
+      reply(transition, replyStepId, named.length ? named : plan.steps.find((s) => s.id === replyStepId).chunkIds, after);
+    } catch (error) {
+      if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
+      setErrorCode(error.code);
+    } finally {
+      if (grading.current === ac) { grading.current = null; setEvaluating(false); }
+    }
+  }
+
+  function send() {
+    const message = draft.trim();
+    if (!message || draft.length > MAX_ANSWER_CHARS) return;
+    setDraft('');
+    const base = reduce(lesson, { type: 'answerSent', text: message });
+    dispatch({ type: 'answerSent', text: message });
+    grade(message, base);
+  }
+
+  // Retry for an answer whose evaluation failed: the same message, evaluated again.
+  const retryAnswer = () => grade(messages.at(-1).text, lesson);
+
+  // After a reveal: on to the next step's opening, or, when there is none, the recap.
+  function proceed() {
+    const event = { type: 'continued' };
+    const after = reduce(lesson, event);
+    dispatch(event);
+    const stepId = after.progress.current;
+    const step = plan.steps.find((s) => s.id === stepId);
+    reply(after === lesson ? 'recap' : 'opening', stepId, step.chunkIds, after);
   }
 
   // Regenerate and Retry: the last reply's stored transition runs again; progress is not touched.
@@ -74,12 +136,22 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
   useEffect(() => {
     if (!messages.length) open();
-    return () => { const run = current.current; current.current = null; if (run) { run.stopped = true; if (run.id) halt(run); else run.ac.abort(); } };
+    return () => {
+      grading.current?.abort();
+      grading.current = null;
+      const run = current.current;
+      current.current = null;
+      if (run) { run.stopped = true; if (run.id) halt(run); else run.ac.abort(); }
+    };
   }, []);
 
   const last = messages.at(-1);
   const streaming = last?.status === 'streaming';
+  const pendingAnswer = last?.role === 'student' && last.intent === null;
   const index = plan.steps.findIndex((s) => s.id === progress.current);
+  const canAnswer = progress.steps[progress.current].status === 'active' && !!last && !streaming && !pendingAnswer && !evaluating;
+  const canContinue = progress.steps[progress.current].status === 'revealed' && last?.transition === 'reveal' && ['done', 'stopped'].includes(last.status);
+  const over = draft.length > MAX_ANSWER_CHARS;
 
   return (
     <section className="mt-6">
@@ -88,6 +160,15 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
       <ol className="mt-4 space-y-3" aria-live="polite">
         {messages.map((m, i) => {
+          if (m.role === 'student') {
+            return (
+              <li key={i} className="rounded border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-500">You</p>
+                <p dir="auto" className="whitespace-pre-wrap">{m.text}</p>
+                {m.intent && m.intent !== 'answer' && <p className="mt-1 text-xs text-slate-500">The tutor can't respond to this kind of message yet.</p>}
+              </li>
+            );
+          }
           const pages = sourcePages(m, source);
           return (
             <li key={i} className="rounded border border-slate-200 p-3">
@@ -99,7 +180,9 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
         })}
       </ol>
 
-      {last?.status === 'failed' && (
+      {evaluating && <p role="status" className="mt-3 text-sm text-slate-500">Thinking…</p>}
+
+      {errorCode && (last?.status === 'failed' || pendingAnswer) && (
         <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
           {MESSAGES[errorCode] ?? FALLBACK}{' '}
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
@@ -108,14 +191,23 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {streaming && <button className="rounded border border-slate-300 px-3 py-1" onClick={stop}>Stop</button>}
-        {last?.status === 'failed' && <button className="rounded bg-slate-900 px-3 py-1 text-white" onClick={again}>Retry</button>}
+        {(last?.status === 'failed' || (pendingAnswer && !evaluating)) && <button className="rounded bg-slate-900 px-3 py-1 text-white" onClick={pendingAnswer ? retryAnswer : again}>Retry</button>}
         {['done', 'stopped'].includes(last?.status) && <button className="rounded border border-slate-300 px-3 py-1" onClick={again}>Regenerate</button>}
+        {canContinue && <button className="rounded bg-slate-900 px-3 py-1 text-white" onClick={proceed}>Continue</button>}
       </div>
 
       <div className="mt-4">
         <label className="block text-sm font-medium" htmlFor="answer">Your answer</label>
-        <textarea id="answer" className="mt-1 w-full rounded border border-slate-300 p-2 disabled:opacity-40" rows={2} disabled aria-describedby="answer-note" />
-        <p id="answer-note" className="mt-1 text-sm text-slate-500">Answering comes with the next update.</p>
+        <textarea
+          id="answer" className="mt-1 w-full rounded border border-slate-300 p-2 disabled:opacity-40" rows={2}
+          value={draft} onChange={(e) => setDraft(e.target.value)} disabled={!canAnswer} aria-describedby="answer-count"
+        />
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <p id="answer-count" className={`text-sm ${over ? 'text-red-700' : 'text-slate-500'}`}>
+            {draft.length} / {MAX_ANSWER_CHARS}{over && ' (too long, shorten it to send)'}
+          </p>
+          <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={send} disabled={!canAnswer || !draft.trim() || over}>Send</button>
+        </div>
       </div>
     </section>
   );

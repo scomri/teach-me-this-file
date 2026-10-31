@@ -7,14 +7,15 @@ export class TeachError extends Error {
 }
 
 // The request the server builds the prompt from: the transition, the lesson's stated constraints and the
-// current step with its chunks. Never prompt text, never the key points of an opening.
+// step the reply is about with its chunks. Never prompt text. The key points travel as state, never as text
+// to show: an opening carries none, and the server picks which a move gets from the points and which are met.
 // stepId: the step the reply belongs to (a repeated reply keeps its own step); default the current one.
 export function teachRequest({ lesson, transition, settings, stepId = lesson.progress.current }) {
-  const { plan, source, teacher } = lesson;
+  const { plan, source, teacher, progress } = lesson;
   const i = plan.steps.findIndex((s) => s.id === stepId);
   const step = plan.steps[i];
   const byId = new Map(source.chunks.map((c) => [c.id, c]));
-  return {
+  const request = {
     preset: settings.preset,
     teacher: settings.teacher,
     transition,
@@ -22,6 +23,18 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
     step: { index: i + 1, total: plan.steps.length, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
     chunks: step.chunkIds.map((id) => byId.get(id)).filter(Boolean).map(({ id, page, text }) => ({ id, page, text })),
   };
+  if (transition === 'opening') return request;
+  // The step the student just answered: the one before the reply's step when an advance opens the next.
+  const answered = transition === 'advance' ? plan.steps[i - 1] : step;
+  const { pointsMet, status } = progress.steps[answered.id];
+  if (transition !== 'recap' || status === 'mastered') { // a recap after a reveal has no answer to confirm
+    request.answered = { title: answered.title, checkQuestion: answered.checkQuestion, expected: answered.expected, pointsMet };
+  }
+  if (transition === 'recap') {
+    const titles = (wanted) => plan.steps.filter((s) => progress.steps[s.id].status === wanted).map((s) => s.title);
+    request.recap = { mastered: titles('mastered'), revealed: titles('revealed') };
+  }
+  return request;
 }
 
 // Streams one reply: onStart(id) when the server names the stream, onText(text) per chunk. Resolves when

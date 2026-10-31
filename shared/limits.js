@@ -37,3 +37,10 @@ export const MAX_MODEL_CHARS = 200;
 
 // Longest teacher prompt, in characters.
 export const MAX_PROMPT_CHARS = 2000;
+
+// Longest student message, in characters. The composer counts it live and the server answers 400 over it.
+export const MAX_ANSWER_CHARS = 1000;
+
+// Largest model output of one evaluation (a label, point indexes and chunk ids), in tokens. Mostly
+// headroom for models that count reasoning tokens against the same cap.
+export const EVALUATE_OUTPUT_TOKENS = 2048;

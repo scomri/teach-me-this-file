@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_STEPS, TEACH_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
+import { CAPS, MAX_POINTS } from '../ai/plan.js';
 import { providerOutcome } from '../ai/errors.js';
 import { buildTeachMessages, TRANSITIONS } from '../ai/prompts/teach.js';
 import { openStream } from '../streams.js';
@@ -13,9 +14,19 @@ const MAX_SETTING_CHARS = 100; // language, audience, style
 const text = (v, max) => typeof v === 'string' && v.length <= max;
 const optional = (v) => v == null || text(v, MAX_SETTING_CHARS);
 
+const textList = (v, max, count) => Array.isArray(v) && v.length <= count && v.every((x) => text(x, max));
+
+// The step the student just answered: its key points and which of them are met (indexes into expected).
+function validAnswered(a) {
+  if (!a || ![a.title, a.checkQuestion].every((v) => text(v, MAX_FIELD_CHARS))) return null;
+  if (!textList(a.expected, CAPS.point, MAX_POINTS) || !a.expected.length) return null;
+  if (!Array.isArray(a.pointsMet) || !a.pointsMet.every((i) => Number.isInteger(i) && i >= 0 && i < a.expected.length) || new Set(a.pointsMet).size !== a.pointsMet.length) return null;
+  return { title: a.title, checkQuestion: a.checkQuestion, expected: a.expected, pointsMet: a.pointsMet };
+}
+
 // Returns the checked request, or null. The step's chunks are the only document text it carries.
 function validateRequest(body) {
-  const { preset, teacher, transition, lesson, step, chunks } = body ?? {};
+  const { preset, teacher, transition, lesson, step, chunks, answered, recap } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset) || (teacher !== undefined && !text(teacher, MAX_MODEL_CHARS))) return null;
   if (!Object.hasOwn(TRANSITIONS, transition)) return null;
   if (!lesson || ![lesson.language, lesson.audience, lesson.style, lesson.documentLanguage].every(optional)) return null;
@@ -30,12 +41,19 @@ function validateRequest(body) {
     chars += c.text.length;
   }
   if (chars > MAX_DOC_CHARS) return null;
+  // After an answer the request carries that step's key points; an opening never does.
+  const after = transition !== 'opening';
+  const answeredStep = after && (answered !== undefined || transition !== 'recap') ? validAnswered(answered) : undefined; // a recap may omit it
+  if (answeredStep === null || (transition === 'nudge' && answeredStep.pointsMet.length === answeredStep.expected.length)) return null;
+  if (transition === 'recap' && !(recap && textList(recap.mastered, MAX_FIELD_CHARS, MAX_STEPS) && textList(recap.revealed, MAX_FIELD_CHARS, MAX_STEPS))) return null;
   const { language = null, audience = null, style = null, documentLanguage = null } = lesson;
   return {
     preset, model: teacher?.trim() || PRESETS[preset].teacher, transition,
     lesson: { language, audience, style, documentLanguage },
     step: { index: step.index, total: step.total, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
     chunks,
+    ...(answeredStep && { answered: answeredStep }),
+    ...(transition === 'recap' && { recap: { mastered: recap.mastered, revealed: recap.revealed } }),
   };
 }
 
@@ -68,7 +86,10 @@ async function readDeltas(body, onText) {
 }
 
 // POST /api/teach { preset, teacher?, transition, lesson: { language, audience, style, documentLanguage },
-// step: { index, total, title, objective, checkQuestion }, chunks } with X-Api-Key.
+// step: { index, total, title, objective, checkQuestion }, chunks, answered?, recap? } with X-Api-Key.
+// `answered` ({ title, checkQuestion, expected, pointsMet }) is the step the student just answered, and `recap`
+// ({ mastered, revealed }, step titles) the outcome of the lesson; the server picks which key points the
+// transition gets from `expected` and `pointsMet`.
 // A rejected request is a plain 400. Otherwise an event stream: `start` { id }, `{ text }` chunks, then
 // `done` or `error` { error: code }. The id works with POST /api/streams/:id/cancel.
 export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
