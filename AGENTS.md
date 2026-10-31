@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). Slice 1 in progress: file ingestion (PDF, DOCX, PPTX, TXT and MD built), model settings with a key and model check (`/api/check`), and planning (`/api/plan`, read-only plan screen), with an outline for documents too long for one request and a coverage check (full, partial, none) plus notes on requests the app does not follow; Start opens step 1 and streams the tutor's opening reply (`/api/teach`); answering and the rest of the tutor loop are next. Planning notes are kept outside version control.
+Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). Slice 1 in progress: file ingestion (PDF, DOCX, PPTX, TXT and MD built), model settings with a key and model check (`/api/check`), and planning (`/api/plan`, read-only plan screen), with an outline for documents too long for one request and a coverage check (full, partial, none) plus notes on requests the app does not follow; Start opens step 1 and streams the tutor's opening reply (`/api/teach`); a lesson resumes after a refresh (IndexedDB); answering and the rest of the tutor loop are next. Planning notes are kept outside version control.
 
 Commands (Node 24):
 
