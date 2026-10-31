@@ -6,12 +6,13 @@ const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text:
 const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
 const constraints = { language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5 };
 const received = { type: 'planReceived', plan, constraints, coverage: 'partial', coverageNote: 'the Krebs cycle' };
+const noConstraints = { language: null, minutes: null, audience: null, style: null };
 
 test('a new lesson is in setup: no file, empty prompt, no plan, no progress, no messages', () => {
   assert.deepEqual(initialLesson(), {
     version: 1,
     source: null,
-    teacher: { prompt: '', constraints: null },
+    teacher: { prompt: '', constraints: noConstraints },
     plan: null,
     progress: null,
     messages: [],
@@ -34,7 +35,7 @@ test('fileRead stores the file, keeps the typed prompt and drops the plan of the
   s = reduce(s, { type: 'fileRead', source: next });
   assert.equal(s.source, next);
   assert.equal(s.teacher.prompt, 'teach it');
-  assert.equal(s.teacher.constraints, null);
+  assert.deepEqual(s.teacher.constraints, noConstraints);
   assert.equal(s.plan, null);
 });
 
@@ -44,10 +45,13 @@ test('fileRead with no file (a pick started or failed) empties the source and th
   assert.equal(s.plan, null);
 });
 
-test('planReceived stores the plan with its coverage, and the constraints under the teacher', () => {
-  const s = reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), received);
-  assert.deepEqual(s.plan, { ...plan, coverage: 'partial', coverageNote: 'the Krebs cycle' });
-  assert.equal(s.teacher.constraints, constraints);
+test('planReceived stores the teacher constraints, and the plan with its coverage and the requests it bounded', () => {
+  const asked = { ...constraints, minutes: 5, steps: 20, outsideSources: true, maxSteps: 2 };
+  const s = reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { ...received, constraints: asked });
+  assert.deepEqual(s.teacher.constraints, { language: 'English', minutes: 5, audience: null, style: null });
+  assert.deepEqual(s.plan, {
+    ...plan, coverage: 'partial', coverageNote: 'the Krebs cycle', maxSteps: 2, requested: { steps: 20, outsideSources: true },
+  });
   assert.equal(s.progress, null);
   assert.deepEqual(s.messages, []);
 });
@@ -64,7 +68,7 @@ test('planCleared returns to setup and keeps the file and the prompt', () => {
   s = reduce(s, { type: 'promptChanged', prompt: 'teach it' });
   s = reduce(reduce(s, received), { type: 'planCleared' });
   assert.equal(s.plan, null);
-  assert.equal(s.teacher.constraints, null);
+  assert.deepEqual(s.teacher.constraints, noConstraints);
   assert.equal(s.source, doc);
   assert.equal(s.teacher.prompt, 'teach it');
 });
