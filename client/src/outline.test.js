@@ -57,6 +57,12 @@ test('the outline has one entry per heading, with the id range, page and opening
   ]);
 });
 
+test('the opening text does not repeat the heading, and an unknown preset still gets a budget', () => {
+  const doc = [chunk(1, { heading: 'Cell biology', text: 'Cell biology\nCells are small.' })];
+  assert.equal(buildOutline(doc, 'latin', 100_000)[0].text, 'Cells are small.');
+  assert.ok(planBudget('nope') > 0);
+});
+
 test('without headings the outline has one entry per page, and without pages even groups of chunks', () => {
   const pages = buildOutline(many(6, (i) => ({ page: Math.floor(i / 2) + 1 })), 'latin', 100_000);
   assert.deepEqual(pages.map((e) => [e.first, e.last, e.page, e.heading]), [['c1', 'c2', 1, ''], ['c3', 'c4', 2, ''], ['c5', 'c6', 3, '']]);

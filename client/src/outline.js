@@ -17,7 +17,8 @@ const GROUP_CHUNKS = 5; // chunks per entry when a document has neither headings
 export const estimateTokens = (chars, script) => Math.ceil(chars * TOKENS_PER_CHAR[script]);
 
 // Tokens the document may take in one plan request: the preset's tokens per minute, less the output and prompt.
-export const planBudget = (preset) => PRESETS[preset].tpm - PLAN_OUTPUT_TOKENS - PLAN_OVERHEAD_TOKENS;
+// An unknown preset gets Gemini's; the server refuses it.
+export const planBudget = (preset) => (PRESETS[preset] ?? PRESETS.gemini).tpm - PLAN_OUTPUT_TOKENS - PLAN_OVERHEAD_TOKENS;
 
 const squash = (s) => s.replace(/\s+/g, ' ').trim();
 
@@ -35,8 +36,13 @@ function sections(chunks) {
   return out.map((s) => s.chunks);
 }
 
-// The chunk text without its own heading line, which the entry already shows.
-const body = (c) => squash(c.text.replace(/^#{1,6}[^\n]*/, ''));
+// The chunk text without its own heading, which the entry already shows: a Markdown line, or the
+// bare heading text a PDF chunk may open with.
+function body(c) {
+  const text = squash(c.text.replace(/^#{1,6}[^\n]*/, ''));
+  const heading = squash(c.heading ?? '');
+  return heading && text.startsWith(heading) ? text.slice(heading.length).trim() : text;
+}
 
 // One entry per section: { first, last, page, heading, text }, covering every chunk in order.
 export function buildOutline(chunks, script, budget) {
