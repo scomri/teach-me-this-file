@@ -109,7 +109,7 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
       )}
       {plan && (
         <PlanScreen
-          result={{ plan, constraints: lesson.teacher.constraints, coverage: plan.coverage, coverageNote: plan.coverageNote }} doc={doc} busy={planning}
+          plan={plan} constraints={lesson.teacher.constraints} doc={doc} busy={planning}
           onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
         />
       )}

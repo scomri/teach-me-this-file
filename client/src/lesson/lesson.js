@@ -14,18 +14,22 @@ export function initialLesson() {
   };
 }
 
+// Back to plan-less: what was planned for, and anything taught from it, goes with the plan.
+const withoutPlan = (state) => ({ ...state, teacher: { ...state.teacher, constraints: null }, plan: null, progress: null, messages: [] });
+
 export function reduce(state, event) {
   switch (event.type) {
     case 'fileRead': // source null: a pick started or failed. A new file keeps the typed prompt.
-      return { ...state, source: event.source, teacher: { ...state.teacher, constraints: null }, plan: null, progress: null, messages: [] };
+      return { ...withoutPlan(state), source: event.source };
     case 'promptChanged':
       return { ...state, teacher: { ...state.teacher, prompt: event.prompt } };
     case 'planReceived': {
       const { plan, constraints, coverage, coverageNote } = event;
-      return { ...state, teacher: { ...state.teacher, constraints }, plan: { ...plan, coverage, coverageNote }, progress: null, messages: [] };
+      const next = withoutPlan(state);
+      return { ...next, teacher: { ...next.teacher, constraints }, plan: { ...plan, coverage, coverageNote } };
     }
     case 'planCleared':
-      return { ...state, teacher: { ...state.teacher, constraints: null }, plan: null, progress: null, messages: [] };
+      return withoutPlan(state);
     case 'newLesson':
       return initialLesson();
     default:
