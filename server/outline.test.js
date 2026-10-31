@@ -4,10 +4,11 @@ import { createApp } from './app.js';
 import { buildPlanMessages } from './ai/prompts/plan.js';
 
 const step = (n, chunkIds) => ({ title: `Step ${n}`, objective: 'Explain it', chunkIds, checkQuestion: 'Why?', expected: ['a point'] });
-const reply = (steps) => ({
-  promptLanguage: 'English', documentLanguage: 'English',
-  constraints: { language: null, audience: null, style: null, minutes: null },
+const reply = (steps, extra = {}) => ({
+  promptLanguage: 'English', documentLanguage: 'English', coverage: 'full', coverageNote: '',
+  constraints: { language: null, audience: null, style: null, minutes: null, steps: null, outsideSources: false },
   plan: { title: 'A lesson', steps },
+  ...extra,
 });
 const wrap = (obj) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(obj) } }] }));
 
@@ -35,6 +36,19 @@ test('the outline prompt fences entries, states the id ranges and neutralizes en
   assert.equal(user.content.match(/<\/outline_entry>/g).length, 2);
   const whole = buildPlanMessages({ chunks: [{ id: 'c1', page: 1, text: 'x' }], prompt: '', script: 'latin' });
   assert.doesNotMatch(whole[0].content, /outline/);
+});
+
+test('coverage and whole-file mode work for an outline request too', async (t) => {
+  const [system] = buildPlanMessages({ outline, prompt: 'teach WWII', script: 'latin', wholeFile: true });
+  assert.match(system.content, /outline of the whole document/);
+  assert.match(system.content, /never partial or none/);
+  const calls = [];
+  const plan = await setup(t, async (url, init) => { calls.push(JSON.parse(init.body)); return wrap(reply([step(1, ['c7'])], { coverage: 'partial', coverageNote: 'the Krebs cycle' })); });
+  const body = await (await plan()).json();
+  assert.deepEqual([body.coverage, body.coverageNote], ['partial', 'the Krebs cycle']);
+  const whole = await setup(t, async (url, init) => { calls.push(JSON.parse(init.body)); return wrap(reply([step(1, ['c7'])])); });
+  assert.equal((await whole({ wholeFile: true })).status, 200);
+  assert.match(calls[1].messages[0].content, /Coverage\. The teacher chose to plan the whole document/);
 });
 
 test('a plan from an outline may cite any id in the document, and every id must exist', async (t) => {

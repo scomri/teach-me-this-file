@@ -1,11 +1,14 @@
 // Plan call: the strict output schema and validation (prompts are in prompts/plan.js). Pure; no network.
 // The model proposes a plan; code checks it, assigns step ids and fills constraint defaults.
-import { DEFAULT_STEPS, MAX_STEPS, MIN_STEPS, MINUTES_PER_STEP } from '../../shared/limits.js';
+import { DEFAULT_STEPS, MAX_STEPS, MIN_STEPS, stepsForMinutes } from '../../shared/limits.js';
 
 // Longest accepted value of each plan field, in characters. Over the cap is rejected, not cut.
 export const CAPS = { title: 120, objective: 300, question: 300, point: 200 };
 const MAX_CONSTRAINT_CHARS = 100;
 export const MAX_POINTS = 3;
+// How much of the teacher's request the document covers (see the plan prompt).
+export const COVERAGE = ['full', 'partial', 'none'];
+const MAX_NOTE_CHARS = 400;
 
 const str = { type: 'string' };
 const nullable = (type) => ({ type: [type, 'null'] });
@@ -19,7 +22,9 @@ export const PLAN_RESPONSE_FORMAT = {
     schema: object({
       promptLanguage: str,
       documentLanguage: str,
-      constraints: object({ language: nullable('string'), audience: nullable('string'), style: nullable('string'), minutes: nullable('number') }),
+      coverage: { type: 'string', enum: COVERAGE },
+      coverageNote: str,
+      constraints: object({ language: nullable('string'), audience: nullable('string'), style: nullable('string'), minutes: nullable('number'), steps: nullable('number'), outsideSources: { type: 'boolean' } }),
       plan: object({
         title: str,
         steps: {
@@ -31,6 +36,7 @@ export const PLAN_RESPONSE_FORMAT = {
   },
 };
 
+const positive = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
 const trimConstraint = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_CONSTRAINT_CHARS) : null);
 
 // Some models answer with a language code ("en", "pt-BR"). Show the name; anything else passes through.
@@ -46,13 +52,16 @@ function languageName(v) {
 // prompt language is the placeholder's, not the teacher's.
 export function resolveConstraints(reply, { promptBlank = false } = {}) {
   const c = promptBlank ? {} : (reply?.constraints ?? {});
-  const minutes = typeof c.minutes === 'number' && Number.isFinite(c.minutes) && c.minutes > 0 ? c.minutes : null;
-  const maxSteps = minutes == null ? DEFAULT_STEPS : Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.round(minutes / MINUTES_PER_STEP)));
+  const minutes = positive(c.minutes);
+  const steps = positive(c.steps);
+  const maxSteps = minutes == null ? DEFAULT_STEPS : Math.min(MAX_STEPS, Math.max(MIN_STEPS, stepsForMinutes(minutes)));
   return {
     language: languageName(c.language) ?? (promptBlank ? null : languageName(reply?.promptLanguage)) ?? languageName(reply?.documentLanguage),
     audience: trimConstraint(c.audience),
     style: trimConstraint(c.style),
     minutes,
+    steps: steps && Math.round(steps), // asked for; the ceiling below still applies
+    outsideSources: c.outsideSources === true, // asked for; the lesson never uses them
     maxSteps,
   };
 }
@@ -60,17 +69,35 @@ export function resolveConstraints(reply, { promptBlank = false } = {}) {
 const normalizeTitle = (s) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 // reply: the parsed model output. chunkIds: Set of ids in the document.
-// Returns { ok: true, plan, constraints } or { ok: false, errors } (strings for the repair message).
-export function validatePlan(reply, chunkIds, { promptBlank = false } = {}) {
+// Returns { ok: true, plan, constraints, coverage, coverageNote } or { ok: false, errors } (strings for the
+// repair message). With coverage 'none' the plan is null. A blank prompt names no topic and a whole-file
+// request drops it, so either way the file cannot fail to cover it: coverage is 'full' and the model's
+// answer is ignored.
+export function validatePlan(reply, chunkIds, { promptBlank = false, wholeFile = false } = {}) {
   const errors = [];
   const constraints = resolveConstraints(reply, { promptBlank });
+  let coverage = 'full';
+  let coverageNote = '';
+  const topicChecked = !promptBlank && !wholeFile;
+  if (topicChecked) {
+    if (!COVERAGE.includes(reply?.coverage)) errors.push(`coverage must be one of ${COVERAGE.join(', ')}`);
+    else coverage = reply.coverage;
+    if (typeof reply?.coverageNote !== 'string') errors.push('coverageNote must be a string');
+    else if (coverage !== 'full') {
+      coverageNote = reply.coverageNote.trim();
+      if (!coverageNote) errors.push(`coverageNote must say what the file does not cover when coverage is ${coverage}`);
+      else if (coverageNote.length > MAX_NOTE_CHARS) errors.push(`coverageNote is over ${MAX_NOTE_CHARS} characters`);
+    }
+  }
   const c = reply?.constraints;
   if (!c || typeof c !== 'object') errors.push('constraints must be an object');
   else {
     for (const k of ['language', 'audience', 'style']) if (c[k] !== null && typeof c[k] !== 'string') errors.push(`constraints.${k} must be a string or null`);
-    if (c.minutes !== null && typeof c.minutes !== 'number') errors.push('constraints.minutes must be a number or null');
+    for (const k of ['minutes', 'steps']) if (c[k] !== null && typeof c[k] !== 'number') errors.push(`constraints.${k} must be a number or null`);
+    if (typeof c.outsideSources !== 'boolean') errors.push('constraints.outsideSources must be a boolean');
   }
   for (const k of ['promptLanguage', 'documentLanguage']) if (typeof reply?.[k] !== 'string') errors.push(`${k} must be a string`);
+  if (coverage === 'none') return errors.length ? { ok: false, errors } : { ok: true, plan: null, constraints, coverage, coverageNote };
   const { title, steps } = reply?.plan ?? {};
   const field = (value, cap, label) => {
     if (typeof value !== 'string' || !value.trim()) errors.push(`${label} must be a non-empty string`);
@@ -121,5 +148,5 @@ export function validatePlan(reply, chunkIds, { promptBlank = false } = {}) {
   }
 
   if (errors.length) return { ok: false, errors };
-  return { ok: true, plan: { title: planTitle, steps: out }, constraints };
+  return { ok: true, plan: { title: planTitle, steps: out }, constraints, coverage, coverageNote };
 }

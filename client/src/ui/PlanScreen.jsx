@@ -1,8 +1,23 @@
-import { estimatedMinutes, sourcePages } from '../plan.js';
+import { estimatedMinutes, requestNotes, sourcePages } from '../plan.js';
 
-// Read-only view of a plan. The text is model-written, so each element gets its own direction.
-export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate }) {
+// The file does not cover the request: no plan, one way forward. The note is model-written.
+export function NoCoverage({ coverageNote, busy, onPlanWholeFile }) {
+  return (
+    <div role="alert" className="mt-6 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+      <p className="font-medium">This file doesn't cover your request.</p>
+      <p dir="auto" className="mt-1">{coverageNote}</p>
+      <button className="mt-3 rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={onPlanWholeFile} disabled={busy}>
+        Plan from whole file
+      </button>
+    </div>
+  );
+}
+
+// Read-only view of a plan result ({ plan, constraints, coverage, coverageNote }). The text is model-written,
+// so each element gets its own direction.
+export default function PlanScreen({ result: { plan, constraints, coverage, coverageNote }, doc, busy, onRegenerate }) {
   const facts = [constraints.language, constraints.audience, constraints.style].filter(Boolean);
+  const notes = requestNotes(plan, constraints);
   return (
     <article className="mt-6">
       <h2 dir="auto" className="text-xl font-semibold">{plan.title}</h2>
@@ -10,6 +25,14 @@ export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate 
         {plan.steps.length} {plan.steps.length === 1 ? 'step' : 'steps'} · about {estimatedMinutes(plan)} min
         {facts.length > 0 && ` · ${facts.join(' · ')}`}
       </p>
+      {coverage === 'partial' && (
+        <p role="note" dir="auto" className="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+          Not in the file: {coverageNote}
+        </p>
+      )}
+      {notes.map((note) => (
+        <p key={note} role="note" className="mt-2 rounded border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">{note}</p>
+      ))}
 
       <ol className="mt-4 space-y-4">
         {plan.steps.map((step, i) => {

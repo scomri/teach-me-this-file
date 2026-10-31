@@ -21,9 +21,12 @@ export const MAX_BODY_BYTES = MAX_DOC_CHARS * 4 + 100 * 1024;
 // Lesson length: a step takes about MINUTES_PER_STEP; a plan has MIN_STEPS to MAX_STEPS
 // steps, DEFAULT_STEPS when the teacher's prompt states no minutes.
 export const MINUTES_PER_STEP = 2.5;
-export const MIN_STEPS = 3;
+export const MIN_STEPS = 1;
 export const MAX_STEPS = 10;
 export const DEFAULT_STEPS = 5;
+
+// Steps a lesson of this many minutes asks for, before the MIN_STEPS to MAX_STEPS clamp.
+export const stepsForMinutes = (minutes) => Math.round(minutes / MINUTES_PER_STEP);
 
 // Longest model name a settings field or request may carry, in characters.
 export const MAX_MODEL_CHARS = 200;

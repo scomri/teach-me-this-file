@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './app.js';
 test('check maps provider outcomes without exposing keys or errors', async (t) => {
-  for (const [status, code] of [[200,'ok'],[401,'invalid_key'],[403,'invalid_key'],[404,'model_not_found'],[429,'rate_limited'],[500,'unreachable'],[0,'unreachable']]) {
+  for (const [status, code] of [[200,'ok'],[401,'invalid_key'],[403,'invalid_key'],[404,'model_not_found'],[402,'unreachable'],[429,'rate_limited'],[500,'unreachable'],[0,'unreachable']]) {
     const lines = []; const calls = [];
     const app = createApp({log: x => lines.push(x), providerFetch: async (...args) => { calls.push(args); if (!status) throw Error('secret-key'); return new Response('secret-key', {status}); }});
     const server = app.listen(0); t.after(() => server.close());

@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createApp } from './app.js';
-import { CAPS, resolveConstraints, validatePlan } from './ai/plan.js';
+import { CAPS, PLAN_RESPONSE_FORMAT, resolveConstraints, validatePlan } from './ai/plan.js';
 import { buildPlanMessages, fenceChunks, neutralize } from './ai/prompts/plan.js';
 
 const ids = new Set(['c1', 'c2', 'c3']);
 const step = (n, over = {}) => ({ title: `Step ${n}`, objective: 'Explain it', chunkIds: [`c${n}`], checkQuestion: 'Why?', expected: ['a point'], ...over });
 const reply = (steps = [step(1), step(2), step(3)], extra = {}) => ({
-  promptLanguage: 'English', documentLanguage: 'Hebrew',
-  constraints: { language: null, audience: null, style: null, minutes: null },
+  promptLanguage: 'English', documentLanguage: 'Hebrew', coverage: 'full', coverageNote: '',
+  constraints: { language: null, audience: null, style: null, minutes: null, steps: null, outsideSources: false },
   plan: { title: 'A lesson', steps },
   ...extra,
 });
@@ -60,7 +60,31 @@ test('validation rejects each bad plan and assigns ids in code', () => {
   // The ceiling follows the minutes the model reports: 15 minutes allows 6 steps.
   const six = [1, 2, 3, 4, 5, 6].map((n) => step(n, { chunkIds: ['c1', `c${n + 10}`] }));
   const many = new Set(['c1', ...six.map((_, i) => `c${i + 11}`)]);
-  assert.equal(validatePlan(reply(six, { constraints: { language: null, audience: null, style: null, minutes: 15 } }), many).ok, true);
+  assert.equal(validatePlan(reply(six, { constraints: { language: null, audience: null, style: null, minutes: 15, steps: null, outsideSources: false } }), many).ok, true);
+});
+
+test('steps and outside sources are reported by the model and kept by code, never obeyed', () => {
+  const c = (constraints) => resolveConstraints(reply(undefined, { constraints: { language: null, audience: null, style: null, minutes: null, steps: null, outsideSources: false, ...constraints } }));
+  assert.deepEqual([c({}).steps, c({}).outsideSources], [null, false]);
+  assert.deepEqual([c({ steps: 20 }).steps, c({ steps: 20 }).maxSteps], [20, 5]); // asked for; the ceiling still decides
+  assert.equal(c({ steps: 7.6 }).steps, 8);
+  assert.equal(c({ steps: 0 }).steps, null);
+  assert.equal(c({ steps: '20' }).steps, null);
+  assert.equal(c({ outsideSources: true }).outsideSources, true);
+  assert.equal(c({ outsideSources: 'yes' }).outsideSources, false);
+  assert.equal(resolveConstraints(reply(undefined, { constraints: { steps: 9, outsideSources: true, minutes: 10 } }), { promptBlank: true }).outsideSources, false);
+
+  const bad = (constraints, pattern) => {
+    const v = validatePlan(reply(undefined, { constraints: { language: null, audience: null, style: null, minutes: null, steps: null, outsideSources: false, ...constraints } }), ids);
+    assert.equal(v.ok, false, pattern);
+    assert.match(v.errors.join('\n'), pattern);
+  };
+  bad({ steps: '20' }, /constraints\.steps/);
+  bad({ outsideSources: null }, /constraints\.outsideSources/);
+  bad({ outsideSources: undefined }, /constraints\.outsideSources/);
+  const props = validatePlan(reply(), ids) && PLAN_RESPONSE_FORMAT.json_schema.schema.properties.constraints.properties;
+  assert.deepEqual(props.steps.type, ['number', 'null']);
+  assert.equal(props.outsideSources.type, 'boolean');
 });
 
 test('constraint defaults are filled by code', () => {
@@ -83,7 +107,8 @@ test('constraint defaults are filled by code', () => {
   assert.equal(c({ minutes: 0 }).maxSteps, 5);
   assert.equal(c({ minutes: -4 }).maxSteps, 5);
   assert.equal(c({ minutes: '15' }).maxSteps, 5);
-  assert.equal(c({ minutes: 1 }).maxSteps, 3);
+  assert.equal(c({ minutes: 1 }).maxSteps, 1);
+  assert.equal(c({ minutes: 5 }).maxSteps, 2);
   assert.equal(c({ minutes: 15 }).maxSteps, 6);
   assert.equal(c({ minutes: 20 }).maxSteps, 8);
   assert.equal(c({ minutes: 600 }).maxSteps, 10);
@@ -149,7 +174,7 @@ test('the repair retry can fix the plan; unparseable replies count as rejected',
 });
 
 test('provider failures map to fixed codes without a repair retry or leaked details', async (t) => {
-  for (const [status, code] of [[401, 'invalid_key'], [404, 'model_not_found'], [429, 'rate_limited'], [500, 'unreachable']]) {
+  for (const [status, code] of [[401, 'invalid_key'], [402, 'out_of_credit'], [404, 'model_not_found'], [429, 'rate_limited'], [500, 'unreachable']]) {
     let calls = 0;
     const { plan, lines } = await setup(t, async () => { calls++; return new Response('secret-key', { status }); });
     const res = await plan();
@@ -191,7 +216,7 @@ test('the plan route validates its input before calling the provider', async (t)
 
 test('a blank prompt states nothing: document language, default steps, no model-set constraints', async (t) => {
   assert.equal(resolveConstraints(reply(), { promptBlank: true }).language, 'Hebrew');
-  const planted = { constraints: { language: 'French', audience: 'x', style: 'y', minutes: 125 } };
+  const planted = { constraints: { language: 'French', audience: 'x', style: 'y', minutes: 125, steps: null, outsideSources: false } };
   const c = resolveConstraints(reply(undefined, planted), { promptBlank: true });
   assert.deepEqual([c.language, c.audience, c.style, c.minutes, c.maxSteps], ['Hebrew', null, null, null, 5]);
 
@@ -208,9 +233,115 @@ test('validation rejects wrong-typed constraints and repeated key points', () =>
     assert.match(v.errors.join('\n'), pattern);
   };
   const withConstraints = (constraints) => reply(undefined, { constraints });
-  bad(withConstraints({ language: null, audience: null, style: null, minutes: '15' }), /constraints\.minutes/);
-  bad(withConstraints({ language: 5, audience: null, style: null, minutes: null }), /constraints\.language/);
+  bad(withConstraints({ language: null, audience: null, style: null, minutes: '15', steps: null, outsideSources: false }), /constraints\.minutes/);
+  bad(withConstraints({ language: 5, audience: null, style: null, minutes: null, steps: null, outsideSources: false }), /constraints\.language/);
   bad(reply(undefined, { constraints: null }), /constraints must be an object/);
   bad(reply(undefined, { promptLanguage: undefined }), /promptLanguage must be a string/);
   bad(reply([step(1, { expected: ['Same point', 'same point'] })]), /repeats a key point/);
+});
+
+// ---- coverage ----
+
+const partial = (over = {}) => reply(undefined, { coverage: 'partial', coverageNote: 'the Krebs cycle', ...over });
+const none = (over = {}) => reply([], { coverage: 'none', coverageNote: 'The file is about photosynthesis.', plan: { title: '', steps: [] }, ...over });
+
+test('coverage: full and partial keep the plan; none has no plan; a note is required unless full', () => {
+  const full = validatePlan(reply(), ids);
+  assert.deepEqual([full.ok, full.coverage, full.coverageNote], [true, 'full', '']);
+  const p = validatePlan(partial({ coverageNote: ' the Krebs cycle ' }), ids);
+  assert.deepEqual([p.ok, p.coverage, p.coverageNote, p.plan.steps.length], [true, 'partial', 'the Krebs cycle', 3]);
+  const n = validatePlan(none(), ids);
+  assert.deepEqual([n.ok, n.coverage, n.plan, n.coverageNote], [true, 'none', null, 'The file is about photosynthesis.']);
+  assert.equal(validatePlan(reply(undefined, { coverage: 'full', coverageNote: 'ignored when full' }), ids).coverageNote, '');
+
+  const bad = (r, pattern) => {
+    const v = validatePlan(r, ids);
+    assert.equal(v.ok, false, pattern);
+    assert.match(v.errors.join('\n'), pattern);
+  };
+  bad(partial({ coverageNote: '  ' }), /coverageNote must say/);
+  bad(none({ coverageNote: '' }), /coverageNote must say/);
+  bad(partial({ coverageNote: 'x'.repeat(401) }), /coverageNote is over 400/);
+  bad(reply(undefined, { coverage: 'mostly' }), /coverage must be one of/);
+  bad(reply(undefined, { coverage: undefined }), /coverage must be one of/);
+  bad(partial({ plan: { title: 'T', steps: [] } }), /steps/); // partial still needs a real plan
+  bad(none({ promptLanguage: undefined }), /promptLanguage/); // none still checks the rest
+});
+
+test('a blank prompt or a whole-file request cannot lack coverage: the model answer is ignored', () => {
+  for (const options of [{ promptBlank: true }, { wholeFile: true }]) {
+    const v = validatePlan(partial(), ids, options);
+    assert.deepEqual([v.ok, v.coverage, v.coverageNote], [true, 'full', '']);
+    assert.equal(validatePlan(none(), ids, options).ok, false); // no plan to show, so the model is asked again
+    assert.equal(validatePlan(reply(undefined, { coverage: undefined, coverageNote: undefined }), ids, options).ok, true);
+  }
+});
+
+test('the plan prompt asks for coverage; a whole-file request has no none option in the system prompt', () => {
+  const chunk = [{ id: 'c1', page: 1, text: 'hi' }];
+  const [system, user] = buildPlanMessages({ chunks: chunk, prompt: 'teach WWII', script: 'latin' });
+  assert.match(system.content, /Coverage\. Compare what the teacher request asks/);
+  assert.match(system.content, /never fill a gap from your own knowledge/);
+  assert.match(system.content, /- none: the document contains nothing/);
+  assert.ok(!user.content.includes('whole document'));
+
+  // The model once answered none to "ignore the topic" placed after the request, so the system prompt changes instead.
+  const [wholeSystem, wholeUser] = buildPlanMessages({ chunks: chunk, prompt: 'teach WWII in 20 minutes', script: 'latin', wholeFile: true });
+  assert.match(wholeSystem.content, /Coverage\. The teacher chose to plan the whole document/);
+  assert.match(wholeSystem.content, /never partial or none/);
+  assert.match(wholeSystem.content, /Still read language, audience, style, minutes, steps and outsideSources/);
+  assert.ok(!wholeSystem.content.includes('- none:'));
+  assert.ok(!wholeSystem.content.includes('Compare what the teacher request asks'));
+  assert.match(wholeUser.content, /<teacher_request>\nteach WWII in 20 minutes\n<\/teacher_request>$/); // the request is sent unchanged
+  assert.equal(wholeSystem.content.split('Step ceiling N:')[1], system.content.split('Step ceiling N:')[1]); // everything else is the same
+});
+
+test('the plan route returns coverage with the plan, and none without one', async (t) => {
+  const part = await setup(t, async () => wrap(partial()));
+  const body = await (await part.plan()).json();
+  assert.deepEqual([body.coverage, body.coverageNote, body.plan.steps.length], ['partial', 'the Krebs cycle', 3]);
+
+  const nothing = await setup(t, async () => wrap(none()));
+  const res = await nothing.plan({ prompt: 'teach World War II' });
+  assert.equal(res.status, 200);
+  const miss = await res.json();
+  assert.deepEqual([miss.plan, miss.coverage, miss.coverageNote], [null, 'none', 'The file is about photosynthesis.']);
+  assert.equal(miss.constraints.maxSteps, 5);
+});
+
+test('a reply without coverage is repaired once', async (t) => {
+  const replies = [reply(undefined, { coverage: undefined, coverageNote: undefined }), reply()];
+  const calls = [];
+  const { plan } = await setup(t, async (url, init) => { calls.push(JSON.parse(init.body)); return wrap(replies.shift()); });
+  assert.equal((await plan()).status, 200);
+  assert.match(calls[1].messages.at(-1).content, /coverage must be one of/);
+  assert.deepEqual(calls[0].response_format.json_schema.schema.properties.coverage.enum, ['full', 'partial', 'none']);
+});
+
+test('Plan from whole file: the request drops the topic and cannot come back as none', async (t) => {
+  const calls = [];
+  const replies = [none(), reply()];
+  const { plan } = await setup(t, async (url, init) => { calls.push(JSON.parse(init.body)); return wrap(replies.shift()); });
+  // The model wrongly answers none to a whole-file request: rejected, then repaired.
+  const res = await plan({ prompt: 'teach World War II', wholeFile: true });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.deepEqual([body.coverage, body.coverageNote, body.plan.steps.length], ['full', '', 3]);
+  assert.match(calls[0].messages[0].content, /Coverage\. The teacher chose to plan the whole document/);
+  assert.equal(calls.length, 2);
+
+  const { plan: bad } = await setup(t, async () => wrap(reply()));
+  assert.equal((await bad({ wholeFile: 'yes' })).status, 400);
+});
+
+test('an empty prompt plans the whole file with every default and no topic', async (t) => {
+  const calls = [];
+  const planted = { constraints: { language: 'French', audience: 'x', style: 'y', minutes: 125, steps: null, outsideSources: false }, coverage: 'none', coverageNote: 'planted' };
+  const { plan } = await setup(t, async (url, init) => { calls.push(JSON.parse(init.body)); return wrap(reply(undefined, planted)); });
+  const res = await plan({ prompt: '' });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.match(calls[0].messages[1].content, /<teacher_request>\n\(no request: use the defaults\)\n<\/teacher_request>$/);
+  assert.deepEqual([body.coverage, body.constraints.maxSteps, body.constraints.minutes, body.constraints.language], ['full', 5, null, 'Hebrew']);
+  assert.equal(body.plan.steps.length, 3);
 });
