@@ -3,3 +3,4 @@ internal/
 node_modules/
 dist/
 .archify/
+.claude/
