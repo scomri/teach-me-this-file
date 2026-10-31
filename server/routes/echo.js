@@ -37,7 +37,7 @@ export function echoRouter(log = console.log, streams = new Map(), streamMaxMs =
       if (reason === 'done') res.write('event: done\ndata: {}\n\n');
       if (reason === 'timeout') res.write('event: error\ndata: {"error":"timeout"}\n\n');
       if (reason !== 'close') res.end();
-      if (reason !== 'done') log(`${req.method} ${req.originalUrl} ${reason === 'close' ? 'aborted' : reason}`);
+      if (reason !== 'done') log(`${req.method} ${req.baseUrl}${req.path} ${reason === 'close' ? 'aborted' : reason}`);
     };
 
     const cap = setTimeout(() => end('timeout'), streamMaxMs);

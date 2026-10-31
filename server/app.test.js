@@ -194,3 +194,24 @@ test('a JSON body over the limit returns a fixed 413 and echoes nothing', async 
     assert.ok(!out.includes('sk-secret-key'));
   }
 });
+
+test('query values are absent from normal, parser error, and stream cancellation logs', async (t) => {
+  const { url, lines } = start(t);
+  await (await fetch(`${url}/api/health?token=abc`)).text();
+  await (await fetch(`${url}/api/echo-stream?token=abc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{bad' })).text();
+  const response = await fetch(`${url}/api/echo-stream?token=abc`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'one two' }) });
+  const reader = response.body.getReader();
+  const { value } = await reader.read();
+  const id = /"id":"([^"]+)"/.exec(new TextDecoder().decode(value))[1];
+  await cancel(url, id);
+  while (!(await reader.read()).done) {}
+  assert.ok(!lines.join('\n').includes('abc'), lines.join('\n'));
+});
+
+test('oversized request does not log the parser error message', async (t) => {
+  const { url, lines } = start(t);
+  const res = await post(url, bodyOfSize(MAX_BODY_BYTES + 1, 'marker'));
+  assert.equal(res.status, 413);
+  assert.ok(!(await res.text()).includes('request entity too large'));
+  assert.ok(!lines.join('\n').includes('request entity too large'));
+});

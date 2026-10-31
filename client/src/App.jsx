@@ -41,7 +41,13 @@ export default function App() {
         body: JSON.stringify({ text }),
         signal: ac.signal,
       });
-      if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch((err) => {
+          if (err.name === 'AbortError') throw err;
+          return null;
+        });
+        throw new Error(body?.error || `HTTP ${res.status}`);
+      }
 
       reader = res.body.getReader();
       const decoder = new TextDecoder();
