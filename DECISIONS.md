@@ -105,7 +105,14 @@ Verification: reducer tests cover grades, other intents, the uncounted fallback,
 
 Known weaknesses: intent classification, coverage of a question and whether a point is "met" are model judgments; an incorrect classification can select the wrong move. The nudge, safety floor and distress responses are prompt rules rather than independently checked outputs. There is no per-step token budget: large source passages can exceed provider limits even with the request-count ceiling. An evaluation is one call per message with no cache, before any retry.
 
-Deployed real-key scenarios remain unverified: answer withholding before reveal; Stop and Regenerate after a transition; refresh at the same step; full lessons with the injection test in TXT and PDF; English teaching from Hebrew with an Arabic answer; and observed requests and 429s per turn. The automated and stub-provider checks above do not establish these real-model results.
+Real-key checks on the deployed URL, 2026-10-31, using Gemini's default models and synthetic one-step lessons through the deployed API with the client reducer:
+
+| Scenario | Result |
+|---|---|
+| English source, two wrong answers about water's freezing temperature | The first nudge did not disclose the answer; the second turn revealed it. One run, not a guarantee. |
+| Hebrew source, English lesson, wrong answer in Arabic | The reply was mostly English but quoted Hebrew and identified the Hebrew word for zero, disclosing the answer in the first nudge. **Failed** answer withholding. |
+
+These API checks sent one evaluation and one teaching request per student turn; no evaluation reported a rate-limit retry and all teaching streams completed. The deployed API does not expose the number of upstream provider calls or teaching-side retries, so the actual provider request and 429 counts were not measured. Stop and Regenerate, refresh, and full lessons using the injection file in TXT and PDF remain unverified with a real key on the deployed browser. The automated and stub-provider checks above do not establish those real-model results.
 
 ## Resuming a lesson (built)
 
