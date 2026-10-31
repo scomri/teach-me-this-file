@@ -49,10 +49,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     } catch (error) {
       if (current.current !== run) return; // the lesson screen closed: a newer reply is not ours to settle
       if (run.stopped || ac.signal.aborted) return dispatch({ type: 'teachStopped' });
-      if (error.code === 'invalid_key' && latest.current.settings.apiKey !== sentKey) return stream(transition, stepId, snapshot, rateLimitRetried);
       dispatch({ type: 'teachFailed' });
       setError({ code: error.code, from: 'teacher', key: sentKey });
-      if (error.code === 'invalid_key') openSettings();
+      if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
       if (current.current === run) current.current = null;
     }
@@ -98,17 +97,16 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
       dispatch(event);
-      const { transition, relevantChunkIds } = after.messages.at(-1);
+      const { transition } = after.messages.at(-1);
       if (!transition) return;
       // The reply's step is the one progress is on now: the next step after an advance, else the answered one.
       const stepChunkIds = plan.steps.find((s) => s.id === after.progress.current).chunkIds;
-      // An advance teaches the next step, so it cites that step's chunks; the evaluator's ids are for the answer.
-      reply(transition, after.progress.current, transition !== 'advance' && relevantChunkIds.length ? relevantChunkIds : stepChunkIds, after, rateLimitRetried);
+      // Cite every passage the teaching request supplies.
+      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
-      if (error.code === 'invalid_key' && latest.current.settings.apiKey !== sentKey) return grade(message, base);
       setError({ code: error.code, from: 'evaluator', key: sentKey });
-      if (error.code === 'invalid_key') openSettings();
+      if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
       if (grading.current === ac) { grading.current = null; setEvaluating(false); }
     }
@@ -200,7 +198,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
       {errorCode && (last?.status === 'failed' || pendingAnswer) && (
         <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-          {(error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
+          {(errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
         </p>
       )}

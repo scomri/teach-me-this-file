@@ -263,12 +263,12 @@ test('an answer sends evaluate, shows thinking, then streams the teach reply; a 
   await ui.unmount();
 });
 
-test('the tutor message cites the evaluator\'s chunk ids when it named any', async () => {
+test('the tutor message cites all passages supplied to the teacher', async () => {
   const ui = await opened();
   const call = await send(ui, 'sugar');
   await ui.feed(() => call.answer({ ...wrong, relevantChunkIds: ['c1'] }));
   await reply(ui, 1);
-  assert.match(ui.text(), /Source: page 2(?!,)/);
+  assert.match(ui.container.querySelectorAll('li')[2].textContent, /Source: pages 2, 3/);
   const next = await send(ui, 'sugar again');
   await ui.feed(() => next.answer({ ...right, relevantChunkIds: ['c1'] }));
   assert.equal(ui.teach[2].body.transition, 'advance');
@@ -278,6 +278,16 @@ test('the tutor message cites the evaluator\'s chunk ids when it named any', asy
   await ui.click('Regenerate');
   await reply(ui, 3);
   assert.equal([...ui.container.querySelectorAll('li')].at(-1).textContent.includes('Source: page 3'), true);
+  await ui.unmount();
+});
+
+test('a material question cites every passage supplied to the teacher', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'What is chlorophyll?');
+  await ui.feed(() => call.answer({ intent: 'question', keyPointsMet: [], relevantChunkIds: ['c2'] }));
+  assert.deepEqual(ui.teach[1].body.chunks.map((chunk) => chunk.id), ['c1', 'c2']);
+  await reply(ui, 1);
+  assert.match(ui.container.querySelectorAll('li')[2].textContent, /Source: pages 2, 3/);
   await ui.unmount();
 });
 
@@ -435,14 +445,30 @@ test('a rejected teacher key opens Settings and saving a new key retries the rep
   await ui.unmount();
 });
 
-test('a key changed during evaluation retries with the new key without opening Settings', async () => {
+test('a key changed during evaluation ends the turn with Retry', async () => {
   const ui = await opened();
   const call = await send(ui, 'sugar');
   await ui.render({ ...settings, apiKey: 'new-key' }, 1);
   await ui.feed(() => call.fail('invalid_key', 401));
   assert.equal(ui.openedSettings(), 0);
+  assert.equal(ui.evaluate.length, 1);
+  assert.ok(ui.button('Retry'));
+  await ui.click('Retry');
   assert.equal(ui.evaluate[1].headers['X-Api-Key'], 'new-key');
   assert.equal(ui.evaluate[1].body.message, 'sugar');
+  await ui.unmount();
+});
+
+test('a key changed during teaching ends the turn with Retry', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.render({ ...settings, apiKey: 'new-key' }, 1);
+  await ui.feed(() => { ui.teach[0].stream.start('id-0'); ui.teach[0].stream.fail('invalid_key'); });
+  assert.equal(ui.openedSettings(), 0);
+  assert.equal(ui.teach.length, 1);
+  assert.ok(ui.button('Retry'));
+  await ui.click('Retry');
+  assert.equal(ui.teach[1].headers['X-Api-Key'], 'new-key');
   await ui.unmount();
 });
 
