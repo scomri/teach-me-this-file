@@ -50,6 +50,10 @@ Gemini's reported total includes tokens beyond the reported input and output cou
 
 In a separate rerun of the English Anthropic case through `/api/plan`, the first response failed validation because it had seven steps, exceeding the five-step ceiling. The repair retry passed validation and the route returned HTTP 200. The original failed response was not retained, so its cause is unknown. The rerun used 3,889 input and 1,104 output tokens in 8.27 s, followed by 5,034 input and 846 output tokens in 4.57 s for the repair.
 
+On 2026-10-31, small requests also checked the configured teacher models' account limits. OpenAI returned `x-ratelimit-limit-tokens: 1000000`; Anthropic's native Messages endpoint returned separate input and output limits of 5,000,000 and 1,000,000 tokens per minute (its compatibility endpoint reported 6,000,000 combined). Google AI Studio showed the project's Tier 1 Gemini 3.8 Flash limit as 2,000,000 input tokens per minute. OpenRouter's key-info response did not report a token-per-minute limit; its `rate_limit` field was marked deprecated. These are observations for the tested accounts and models, not verified entry-tier limits or guarantees for other keys. The preset values were not changed.
+
+The built app was also run locally on one port. In the browser, a 22-page, 105,988-character PDF was ingested as 80 chunks; a Gemini plan request returned five steps with source pages, including page 20. This checks the local outline flow, not the deployed URL.
+
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.
