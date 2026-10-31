@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_STEPS, TEACH_OUTPUT_TOKENS } from '../../shared/limits.js';
+import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TUTOR_CHARS, TEACH_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
+import { CAPS, MAX_POINTS } from '../ai/plan.js';
 import { providerOutcome } from '../ai/errors.js';
 import { buildTeachMessages, TRANSITIONS } from '../ai/prompts/teach.js';
 import { openStream } from '../streams.js';
-import { isId } from './plan.js';
+import { validChunks } from './plan.js';
 
 const MAX_FIELD_CHARS = 300; // step title, objective, check question
 const MAX_SETTING_CHARS = 100; // language, audience, style
@@ -13,29 +14,40 @@ const MAX_SETTING_CHARS = 100; // language, audience, style
 const text = (v, max) => typeof v === 'string' && v.length <= max;
 const optional = (v) => v == null || text(v, MAX_SETTING_CHARS);
 
+const textList = (v, max, count) => Array.isArray(v) && v.length <= count && v.every((x) => text(x, max));
+
+// The step the student just answered: its key points and which of them are met (indexes into expected).
+function validAnswered(a) {
+  if (!a || ![a.title, a.checkQuestion].every((v) => text(v, MAX_FIELD_CHARS))) return null;
+  if (!textList(a.expected, CAPS.point, MAX_POINTS) || !a.expected.length) return null;
+  if (!Array.isArray(a.pointsMet) || !a.pointsMet.every((i) => Number.isInteger(i) && i >= 0 && i < a.expected.length) || new Set(a.pointsMet).size !== a.pointsMet.length) return null;
+  return { title: a.title, checkQuestion: a.checkQuestion, expected: a.expected, pointsMet: a.pointsMet };
+}
+
 // Returns the checked request, or null. The step's chunks are the only document text it carries.
 function validateRequest(body) {
-  const { preset, teacher, transition, lesson, step, chunks } = body ?? {};
+  const { preset, teacher, transition, lesson, step, chunks, answered, recap, history } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset) || (teacher !== undefined && !text(teacher, MAX_MODEL_CHARS))) return null;
   if (!Object.hasOwn(TRANSITIONS, transition)) return null;
   if (!lesson || ![lesson.language, lesson.audience, lesson.style, lesson.documentLanguage].every(optional)) return null;
   if (!step || !Number.isInteger(step.index) || !Number.isInteger(step.total) || step.index < 1 || step.index > step.total || step.total > MAX_STEPS) return null;
   if (![step.title, step.objective, step.checkQuestion].every((v) => text(v, MAX_FIELD_CHARS))) return null;
-  if (!Array.isArray(chunks) || !chunks.length) return null;
-  let chars = 0;
-  const ids = new Set();
-  for (const c of chunks) {
-    if (!isId(c?.id) || ids.has(c.id) || typeof c.text !== 'string' || (c.page != null && !Number.isInteger(c.page))) return null;
-    ids.add(c.id);
-    chars += c.text.length;
-  }
-  if (chars > MAX_DOC_CHARS) return null;
+  if (!validChunks(chunks)) return null;
+  // After an answer the request carries that step's key points; an opening never does.
+  const after = transition !== 'opening';
+  const answeredStep = after && (answered !== undefined || transition !== 'recap') ? validAnswered(answered) : undefined; // a recap may omit it
+  if (answeredStep === null || (transition === 'nudge' && answeredStep.pointsMet.length === answeredStep.expected.length)) return null;
+  if (transition === 'recap' && !(recap && textList(recap.mastered, MAX_FIELD_CHARS, MAX_STEPS) && textList(recap.revealed, MAX_FIELD_CHARS, MAX_STEPS))) return null;
+  if (history !== undefined && !(Array.isArray(history) && history.length <= MAX_HISTORY_TURNS && history.every((m) => (m?.role === 'tutor' && text(m.text, MAX_TUTOR_CHARS)) || (m?.role === 'student' && text(m.text, MAX_ANSWER_CHARS))))) return null;
   const { language = null, audience = null, style = null, documentLanguage = null } = lesson;
   return {
     preset, model: teacher?.trim() || PRESETS[preset].teacher, transition,
     lesson: { language, audience, style, documentLanguage },
     step: { index: step.index, total: step.total, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
     chunks,
+    history: (history ?? []).map(({ role, text }) => ({ role, text })),
+    ...(answeredStep && { answered: answeredStep }),
+    ...(transition === 'recap' && { recap: { mastered: recap.mastered, revealed: recap.revealed } }),
   };
 }
 
@@ -68,7 +80,12 @@ async function readDeltas(body, onText) {
 }
 
 // POST /api/teach { preset, teacher?, transition, lesson: { language, audience, style, documentLanguage },
-// step: { index, total, title, objective, checkQuestion }, chunks } with X-Api-Key.
+// step: { index, total, title, objective, checkQuestion }, chunks, history?, answered?, recap? } with X-Api-Key.
+// `history` is the last turns of the step the student answered: [{ role: 'tutor' | 'student', text }], at most
+// MAX_HISTORY_TURNS; the prompt shows them as data.
+// `answered` ({ title, checkQuestion, expected, pointsMet }) is the step the student just answered, and `recap`
+// ({ mastered, revealed }, step titles) the outcome of the lesson; the server picks which key points the
+// transition gets from `expected` and `pointsMet`.
 // A rejected request is a plain 400. Otherwise an event stream: `start` { id }, `{ text }` chunks, then
 // `done` or `error` { error: code }. The id works with POST /api/streams/:id/cancel.
 export function teachRouter(fetchImpl, log, streams, streamMaxMs) {

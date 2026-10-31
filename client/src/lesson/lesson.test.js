@@ -200,3 +200,166 @@ test('a new plan, a new file and New lesson drop progress and messages', () => {
   }
   assert.deepEqual(reduce(taught, { type: 'newLesson' }), initialLesson());
 });
+
+// Answering: the student's message, its evaluation, and the move code picks from it.
+const three = {
+  title: 'A lesson',
+  steps: [
+    { id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q1?', expected: ['a', 'b'] },
+    { id: 's2', title: 'Two', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q2?', expected: ['c'] },
+    { id: 's3', title: 'Three', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q3?', expected: ['d'] },
+  ],
+};
+// A started lesson whose first step has been opened (the opening reply is done).
+const opened = (p = three) => reduce(reduce(reduce(planned(p), { type: 'lessonStarted' }), begin), { type: 'teachDone' });
+const answer = (s, text, evaluation) => {
+  s = reduce(s, { type: 'answerSent', text });
+  return reduce(s, { type: 'evaluated', evaluation: { relevantChunkIds: [], ...evaluation } });
+};
+const ans = (...keyPointsMet) => ({ intent: 'answer', keyPointsMet });
+const step = (s, id) => s.progress.steps[id];
+
+test('answerSent adds a student message with no intent yet; the progress is untouched', () => {
+  const before = opened();
+  const s = reduce(before, { type: 'answerSent', text: 'light' });
+  assert.deepEqual(s.messages.at(-1), { role: 'student', stepId: 's1', text: 'light', intent: null });
+  assert.deepEqual(s.progress, before.progress);
+});
+
+test('answerSent is ignored while a reply streams, while an answer awaits its evaluation, or with no active step', () => {
+  const streaming = reduce(reduce(planned(three), { type: 'lessonStarted' }), begin);
+  assert.equal(reduce(streaming, { type: 'answerSent', text: 'x' }), streaming);
+  const pending = reduce(opened(), { type: 'answerSent', text: 'x' });
+  assert.equal(reduce(pending, { type: 'answerSent', text: 'y' }), pending);
+  const revealed = answer(answer(opened(), 'a', ans()), 'b', ans());
+  assert.equal(step(revealed, 's1').status, 'revealed');
+  assert.equal(reduce(revealed, { type: 'answerSent', text: 'y' }), revealed);
+  const unstarted = planned(three);
+  assert.equal(reduce(unstarted, { type: 'answerSent', text: 'x' }), unstarted);
+});
+
+test('a correct answer meets every point, masters the step and moves to the next with an advance', () => {
+  const s = answer(opened(), 'a and b', ans(0, 1));
+  assert.deepEqual(s.messages.at(-1), { role: 'student', stepId: 's1', text: 'a and b', intent: 'answer', result: 'correct', transition: 'advance', relevantChunkIds: [] });
+  assert.deepEqual(step(s, 's1'), { status: 'mastered', pointsMet: [0, 1], fails: 0, asks: 0 });
+  assert.equal(step(s, 's2').status, 'active');
+  assert.equal(s.progress.current, 's2');
+});
+
+test('a partial answer with a new point keeps the step active, counts no failure and nudges', () => {
+  const s = answer(opened(), 'a', ans(0));
+  assert.equal(s.messages.at(-1).result, 'partial');
+  assert.equal(s.messages.at(-1).transition, 'nudge');
+  assert.deepEqual(step(s, 's1'), { status: 'active', pointsMet: [0], fails: 0, asks: 0 });
+  assert.equal(s.progress.current, 's1');
+});
+
+test('a partial answer that adds no new point counts a failed attempt', () => {
+  const s = answer(answer(opened(), 'a', ans(0)), 'a again', ans(0));
+  assert.equal(s.messages.at(-1).result, 'partial');
+  assert.equal(s.messages.at(-1).transition, 'nudge');
+  assert.equal(step(s, 's1').fails, 1);
+  assert.deepEqual(step(s, 's1').pointsMet, [0]);
+});
+
+test('a wrong answer on attempt 1 nudges and on attempt 2 reveals, with the step revealed', () => {
+  const first = answer(opened(), 'x', ans());
+  assert.equal(first.messages.at(-1).result, 'wrong');
+  assert.equal(first.messages.at(-1).transition, 'nudge');
+  assert.equal(step(first, 's1').fails, 1);
+  const second = answer(first, 'y', ans());
+  assert.equal(second.messages.at(-1).result, 'wrong');
+  assert.equal(second.messages.at(-1).transition, 'reveal');
+  assert.equal(step(second, 's1').status, 'revealed');
+  assert.equal(step(second, 's1').fails, 2);
+  assert.equal(second.progress.current, 's1'); // stays until Continue
+});
+
+test('points from several answers are a union; the answer that completes it is correct', () => {
+  let s = answer(opened(), 'b', ans(1));
+  assert.deepEqual(step(s, 's1').pointsMet, [1]);
+  s = answer(s, 'a', ans(0));
+  assert.deepEqual(step(s, 's1').pointsMet, [0, 1]);
+  assert.equal(s.messages.at(-1).result, 'correct');
+  assert.equal(s.messages.at(-1).transition, 'advance');
+});
+
+test('out-of-range, repeated and non-integer point indexes are ignored by the reducer too', () => {
+  const s = answer(opened(), 'a', ans(0, 0, 7, -1, 1.5));
+  assert.deepEqual(step(s, 's1').pointsMet, [0]);
+});
+
+test('mastered means all points met before a reveal; a revealed step stays revealed', () => {
+  let s = reduce(answer(answer(opened(), 'x', ans()), 'y', ans()), { type: 'continued' });
+  s = reduce(reduce(s, { type: 'teachStarted', stepId: 's2', transition: 'opening', chunkIds: ['c1'] }), { type: 'teachDone' });
+  s = answer(s, 'c', ans(0));
+  assert.equal(step(s, 's1').status, 'revealed');
+  assert.equal(step(s, 's2').status, 'mastered');
+});
+
+test('continued after a reveal opens the next step', () => {
+  const revealed = answer(answer(opened(), 'x', ans()), 'y', ans());
+  const s = reduce(revealed, { type: 'continued' });
+  assert.equal(s.progress.current, 's2');
+  assert.equal(step(s, 's2').status, 'active');
+  assert.equal(step(s, 's1').status, 'revealed');
+});
+
+test('continued does nothing unless the current step was revealed and has a next step', () => {
+  const active = opened();
+  assert.equal(reduce(active, { type: 'continued' }), active);
+  const revealed = answer(answer(opened(plan), 'x', ans()), 'y', ans());
+  assert.equal(step(revealed, 's1').status, 'revealed');
+  assert.equal(reduce(revealed, { type: 'continued' }), revealed);
+});
+
+test('a correct answer on the last step is a recap, and the lesson has nothing left to answer', () => {
+  const s = answer(opened(plan), 'p', ans(0));
+  assert.equal(s.messages.at(-1).transition, 'recap');
+  assert.equal(step(s, 's1').status, 'mastered');
+  assert.equal(s.progress.current, 's1');
+  assert.equal(reduce(s, { type: 'answerSent', text: 'more' }), s);
+});
+
+test('the reply step is the progress step after evaluated: the next step on an advance, else the answered one', () => {
+  assert.equal(answer(opened(), 'a and b', ans(0, 1)).progress.current, 's2');
+  assert.equal(answer(opened(), 'a', ans(0)).progress.current, 's1');
+  assert.equal(answer(opened(plan), 'p', ans(0)).progress.current, 's1'); // a recap stays on the last step
+});
+
+test('answerSent waits for the tutor reply to be done or stopped: not while it failed', () => {
+  const failed = reduce(reduce(reduce(planned(three), { type: 'lessonStarted' }), begin), { type: 'teachFailed' });
+  assert.equal(reduce(failed, { type: 'answerSent', text: 'x' }), failed);
+  const stopped = reduce(reduce(reduce(planned(three), { type: 'lessonStarted' }), begin), { type: 'teachStopped' });
+  assert.equal(reduce(stopped, { type: 'answerSent', text: 'x' }).messages.length, 2);
+});
+
+test('a message that is not an answer gets its intent and changes no progress or points', () => {
+  const before = opened();
+  const s = answer(before, 'what is the answer?', { intent: 'asks_for_answer', keyPointsMet: [0, 1] });
+  assert.equal(s.messages.at(-1).intent, 'asks_for_answer');
+  assert.equal(s.messages.at(-1).transition, undefined);
+  assert.deepEqual(s.progress, before.progress);
+});
+
+test('evaluated with no answer waiting for it changes nothing', () => {
+  const s = opened();
+  assert.equal(reduce(s, { type: 'evaluated', evaluation: ans(0) }), s);
+});
+
+test('Stop after an evaluation keeps the applied transition', () => {
+  let s = answer(opened(), 'a and b', ans(0, 1));
+  s = reduce(s, { type: 'teachStarted', stepId: 's2', transition: 'advance', chunkIds: ['c1'] });
+  s = reduce(reduce(s, { type: 'teachChunk', text: 'Right' }), { type: 'teachStopped' });
+  assert.equal(s.messages.at(-1).status, 'stopped');
+  assert.equal(s.progress.current, 's2');
+  assert.equal(step(s, 's1').status, 'mastered');
+  const again = reduce(s, { type: 'regenerate' }); // Regenerate repeats the move, not the evaluation
+  assert.equal(again.messages.at(-1).transition, 'advance');
+  assert.equal(again.progress, s.progress);
+});
+
+test('the chunk ids the evaluator named are kept on the student message for the tutor reply', () => {
+  const s = answer(opened(), 'a', { intent: 'answer', keyPointsMet: [0], relevantChunkIds: ['c1'] });
+  assert.deepEqual(s.messages.at(-1).relevantChunkIds, ['c1']);
+});

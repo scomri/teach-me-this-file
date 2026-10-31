@@ -47,6 +47,12 @@ export async function requestPlan({ doc, prompt, settings, wholeFile = false, si
   return body;
 }
 
+// The step's chunks as the evaluate and teach requests carry them.
+export function stepChunks(step, doc) {
+  const byId = new Map(doc.chunks.map((c) => [c.id, c]));
+  return step.chunkIds.map((id) => byId.get(id)).filter(Boolean).map(({ id, page, text }) => ({ id, page, text }));
+}
+
 // Where a step's chunks come from: "page 2, 3", "slide 1", or '' for formats without pages.
 export function sourcePages(step, doc) {
   const byId = new Map(doc.chunks.map((c) => [c.id, c]));

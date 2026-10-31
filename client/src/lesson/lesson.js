@@ -29,7 +29,29 @@ const withoutPlan = (state) => ({ ...state, teacher: { ...state.teacher, constra
 
 const lastTutor = (state) => state.messages.at(-1)?.role === 'tutor' ? state.messages.at(-1) : null;
 const replaceLast = (state, patch) => ({ ...state, messages: [...state.messages.slice(0, -1), { ...state.messages.at(-1), ...patch }] });
+const pendingAnswer = (state) => state.messages.at(-1)?.role === 'student' && state.messages.at(-1).intent === null;
+const stepAfter = (plan, id) => plan.steps[plan.steps.findIndex((s) => s.id === id) + 1];
+const ATTEMPTS = 2; // failed attempts on a step before the tutor reveals the answer
 const streamingReply = (stepId, transition, chunkIds) => ({ role: 'tutor', stepId, text: '', transition, chunkIds, status: 'streaming' });
+
+// Grades an evaluation against the current step: the points it adds (a union with earlier answers), the
+// result, and the move. A message that is not an answer has no move here (null). Pure.
+function grade(state, evaluation) {
+  const { plan, progress } = state;
+  const id = progress.current;
+  const step = plan.steps.find((s) => s.id === id);
+  const before = progress.steps[id];
+  if (evaluation.intent !== 'answer') return { intent: evaluation.intent, transition: null };
+  const met = (evaluation.keyPointsMet ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < step.expected.length);
+  const pointsMet = [...new Set([...before.pointsMet, ...met])].sort((a, b) => a - b);
+  const next = stepAfter(plan, id);
+  if (pointsMet.length === step.expected.length) {
+    return { intent: 'answer', result: 'correct', transition: next ? 'advance' : 'recap', pointsMet, fails: before.fails, status: 'mastered', next };
+  }
+  const fails = pointsMet.length > before.pointsMet.length ? before.fails : before.fails + 1; // a failed attempt adds no point
+  const reveal = fails >= ATTEMPTS;
+  return { intent: 'answer', result: pointsMet.length ? 'partial' : 'wrong', transition: reveal ? 'reveal' : 'nudge', pointsMet, fails, status: reveal ? 'revealed' : 'active' };
+}
 
 export function reduce(state, event) {
   switch (event.type) {
@@ -51,6 +73,31 @@ export function reduce(state, event) {
       if (!state.plan || state.progress) return state;
       const steps = Object.fromEntries(state.plan.steps.map((s, i) => [s.id, { status: i === 0 ? 'active' : 'pending', pointsMet: [], fails: 0, asks: 0 }]));
       return { ...state, progress: { current: state.plan.steps[0].id, steps }, messages: [] };
+    }
+    case 'answerSent': { // the student's message; its evaluation comes next
+      const { progress } = state;
+      // the turn is over only once the tutor's reply is done or stopped (a failed one is retried first)
+      if (!progress || progress.steps[progress.current].status !== 'active' || pendingAnswer(state) || (lastTutor(state) && !['done', 'stopped'].includes(lastTutor(state).status))) return state;
+      return { ...state, messages: [...state.messages, { role: 'student', stepId: progress.current, text: event.text, intent: null }] };
+    }
+    case 'evaluated': { // sets the intent, and applies the move to progress before the reply streams
+      if (!pendingAnswer(state)) return state;
+      const g = grade(state, event.evaluation);
+      const message = { ...state.messages.at(-1), intent: g.intent };
+      if (!g.transition) return replaceLast(state, message); // no move for it yet
+      const { current, steps } = state.progress;
+      const settled = { ...steps, [current]: { ...steps[current], pointsMet: g.pointsMet, fails: g.fails, status: g.status } };
+      if (g.next) settled[g.next.id] = { ...settled[g.next.id], status: 'active' };
+      return {
+        ...replaceLast(state, { ...message, result: g.result, transition: g.transition, relevantChunkIds: event.evaluation.relevantChunkIds ?? [] }),
+        progress: { current: g.next?.id ?? current, steps: settled },
+      };
+    }
+    case 'continued': { // after a reveal, on to the next step
+      const { plan, progress } = state;
+      const next = progress && stepAfter(plan, progress.current);
+      if (!next || progress.steps[progress.current].status !== 'revealed') return state;
+      return { ...state, progress: { current: next.id, steps: { ...progress.steps, [next.id]: { ...progress.steps[next.id], status: 'active' } } } };
     }
     case 'teachStarted':
       if (!state.progress) return state;
