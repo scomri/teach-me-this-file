@@ -48,6 +48,8 @@ On 2026-10-31, each preset's default teacher model received the app's plan promp
 
 Gemini's reported total includes tokens beyond the reported input and output counts. These are single outline calls, not sustained throughput or boundary tests; they do not establish an account's tokens-per-minute limit or prove the configured budgets safe. The first Anthropic English response failed validation; the route's repair retry was not exercised in this measurement. The configured `tpm` values remain unverified and have not been changed.
 
+In a separate rerun of the English Anthropic case through `/api/plan`, the first response failed validation because it had seven steps, exceeding the five-step ceiling. The repair retry passed validation and the route returned HTTP 200. The original failed response was not retained, so its cause is unknown. The rerun used 3,889 input and 1,104 output tokens in 8.27 s, followed by 5,034 input and 846 output tokens in 4.57 s for the repair.
+
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.
