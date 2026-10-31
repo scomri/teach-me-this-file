@@ -148,3 +148,42 @@ test('a provider output stopped by its token limit is not displayed', async (t) 
   const text = await (await post('teach', requestFor('opening'))).text();
   assert.doesNotMatch(text, /TRUNCATED SECRET/); assert.match(text, /unreachable/);
 });
+
+test('an in-band provider error after partial content discards the draft', async (t) => {
+  let calls = 0;
+  const post = await serve(t, async () => {
+    calls++;
+    return new Response('data: ' + JSON.stringify({ choices: [{ delta: { content: 'PRIVATE PARTIAL' } }] }) + '\n\nevent: error\ndata: ' + JSON.stringify({ error: { message: 'provider failed' } }) + '\n\ndata: [DONE]\n\n');
+  });
+  const text = await (await post('teach', requestFor('opening'))).text();
+  assert.doesNotMatch(text, /PRIVATE PARTIAL/);
+  assert.match(text, /unreachable/);
+  assert.equal(calls, 1);
+});
+
+test('regional lesson languages retain their localized fallback after plan normalization', async (t) => {
+  const { resolveConstraints } = await import('./ai/plan.js');
+  const post = await serve(t, async (_, init) => JSON.parse(init.body).stream ? streamText('draft') : wrapped({ flagged: [0], uncertain: false }));
+  for (const [code, expected] of [['he-IL', /כדאי/], ['ar-EG', /راجع المادة/]]) {
+    const language = resolveConstraints({ ...plan, constraints: { ...plan.constraints, language: code } }).language;
+    const text = await (await post('teach', requestFor('opening', { lesson: { language } }))).text();
+    assert.match(text, expected);
+  }
+});
+
+test('a failed repair retains flagged steps on provider errors and network failures', async (t) => {
+  for (const failure of [429, 401, 'network']) {
+    let calls = 0;
+    const post = await serve(t, async () => {
+      calls++;
+      if (calls === 1) return wrapped(plan);
+      if (calls === 2) return wrapped({ flagged: [0], uncertain: false });
+      if (failure === 'network') throw new Error('offline');
+      return new Response('{}', { status: failure });
+    });
+    const response = await post('plan', { preset: 'gemini', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] });
+    const body = await response.json();
+    assert.deepEqual(body.flagged, [1]);
+    assert.equal(body.code, failure === 429 ? 'rate_limited' : failure === 401 ? 'invalid_key' : 'unreachable');
+  }
+});

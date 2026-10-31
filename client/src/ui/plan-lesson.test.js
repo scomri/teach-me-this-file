@@ -200,3 +200,11 @@ test('a restored unvalidated plan cannot start until its questions pass a check'
   assert.equal(ui.sent.length, 2);
   await ui.unmount();
 });
+
+test('a rejected key during repair still identifies flagged questions', async () => {
+  const ui = await mount([() => Response.json({ code: 'invalid_key', flagged: [1] }, { status: 401 })]);
+  await ui.click('Plan');
+  assert.match(ui.text(), /Your key was rejected/);
+  assert.match(ui.text(), /steps 1/);
+  await ui.unmount();
+});

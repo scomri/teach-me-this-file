@@ -1,5 +1,6 @@
 // Teach request: one streamed tutor reply. No React.
 import { MAX_HISTORY_TURNS, MAX_TUTOR_CHARS } from '../../shared/limits.js';
+import { protectsUnansweredPoints } from '../../shared/transitions.js';
 import { stepChunks } from './plan.js';
 
 export class TeachError extends Error {
@@ -26,7 +27,7 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
     step: { index: i + 1, total: plan.steps.length, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
     chunks: stepChunks(step, source),
   };
-  if (!['reveal', 'recap'].includes(transition)) {
+  if (protectsUnansweredPoints(transition)) {
     const met = progress.steps[step.id].pointsMet;
     request.questionValidated = plan.validated === true;
     request.protectedPoints = step.expected.filter((_, n) => !met.includes(n));
