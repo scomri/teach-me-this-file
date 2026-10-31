@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
+import { initialLesson, reduce } from '../lesson/lesson.js';
 import { requestPlan } from '../plan.js';
 import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
@@ -13,9 +14,13 @@ const MESSAGES = {
 };
 const FALLBACK = "The plan couldn't be made. Try again.";
 
-// Teacher prompt in, read-only plan out. `saveCount` counts successful settings saves: a save
-// after a rejected key re-runs the request.
-export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings }) {
+// Teacher prompt in, read-only plan out. The plan lives in the lesson state (`lesson`, `dispatch`);
+// without them the component keeps its own, so it also runs on its own. This component keeps only the
+// request: its status, the last error, and the "file doesn't cover it" message (a plan-less result).
+// `saveCount` counts successful settings saves: a save after a rejected key re-runs the request.
+export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings, lesson: given, dispatch: givenDispatch }) {
+  const own = useReducer(reduce, undefined, initialLesson);
+  const [lesson, dispatch] = givenDispatch ? [given, givenDispatch] : own;
   const [state, setState] = useState({ status: 'idle' });
   const controller = useRef(null);
   // The newest props, for code that runs after an await and must not use a stale closure.
@@ -32,13 +37,20 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
     setState((s) => ({ ...s, status: 'planning' }));
     try {
       const { plan, constraints, coverage, coverageNote } = await requestPlan({ ...sent, signal: ac.signal });
-      setState({ status: 'done', plan, constraints, coverage, coverageNote, wholeFile, prompt: sent.prompt });
+      if (plan) {
+        dispatch({ type: 'planReceived', plan, constraints, coverage, coverageNote });
+        setState({ status: 'done', wholeFile, prompt: sent.prompt });
+      } else {
+        dispatch({ type: 'planCleared' });
+        setState({ status: 'done', coverage, coverageNote, wholeFile, prompt: sent.prompt });
+      }
     } catch (error) {
       if (ac.signal.aborted) return;
       if (error.code === 'invalid_key') {
         // The key changed while the request was in flight: the rejection is about the old one.
         if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan({ wholeFile, prompt: sent.prompt });
-        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt }); // a plan made with the old key is dropped
+        dispatch({ type: 'planCleared' }); // a plan made with the old key is dropped
+        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt });
       }
       setState((s) => ({ ...s, status: 'error', code: error.code }));
     }
@@ -46,7 +58,7 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
 
   function cancel() {
     controller.current?.abort();
-    setState((s) => ({ ...s, status: s.coverage ? 'done' : 'idle' }));
+    setState((s) => ({ ...s, status: s.coverage || lesson.plan ? 'done' : 'idle' }));
   }
 
   useEffect(() => () => controller.current?.abort(), []);
@@ -55,7 +67,8 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
     if (saveCount && state.status === 'key_rejected') runPlan({ wholeFile: state.wholeFile, prompt: state.prompt });
   }, [saveCount]);
 
-  const { status, plan, coverage } = state;
+  const { status, coverage } = state;
+  const { plan } = lesson;
   const planning = status === 'planning';
   const noKey = !settings.apiKey.trim();
 
@@ -99,7 +112,7 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
       )}
       {plan && (
         <PlanScreen
-          result={state} doc={doc} busy={planning}
+          result={{ plan, constraints: lesson.teacher.constraints, coverage: plan.coverage, coverageNote: plan.coverageNote }} doc={doc} busy={planning}
           onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
         />
       )}
