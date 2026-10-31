@@ -74,3 +74,31 @@ export function reduce(state, event) {
       return state;
   }
 }
+
+// Persistence helpers (pure). The record is the lesson state and nothing else: never the API key or settings.
+export const savedRecord = (s) => ({ version: s.version, source: s.source, teacher: s.teacher, plan: s.plan, progress: s.progress, messages: s.messages });
+
+// A loaded record becomes a lesson, or null. discarded: something was saved but cannot be used (wrong version).
+// A reply cut off by a reload was streaming; it comes back stopped with the text saved so far.
+export function normalizeSaved(saved) {
+  if (saved == null) return { lesson: null, discarded: false };
+  if (typeof saved !== 'object' || saved.version !== initialLesson().version || !Array.isArray(saved.messages) || typeof saved.teacher !== 'object' || saved.teacher === null) return { lesson: null, discarded: true };
+  const messages = saved.messages.map((m) => (m.status === 'streaming' ? { ...m, status: 'stopped' } : m));
+  return { lesson: { ...savedRecord(saved), messages }, discarded: false };
+}
+
+// The lesson is stored as two records so that typing does not copy the whole document: the file by itself,
+// and everything else with a flag saying whether a file belongs to it.
+export function splitSaved(lesson) {
+  const { source, ...rest } = savedRecord(lesson);
+  return { main: { ...rest, hasSource: source != null }, source };
+}
+
+// The two records back into one saved object for normalizeSaved. undefined: nothing saved. A pair that does not
+// belong together (one missing, or the flag disagrees) is {}, which normalizeSaved discards.
+export function joinSaved(main, source) {
+  if (main == null && source == null) return undefined;
+  if (main == null || typeof main !== 'object' || main.hasSource !== (source != null)) return {};
+  const { hasSource, ...rest } = main;
+  return { ...rest, source: source ?? null };
+}
