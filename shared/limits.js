@@ -5,6 +5,11 @@
 // The whole document is always kept on the client.
 export const MAX_DOC_CHARS = 100_000;
 
+// Tokens a plan request spends beyond the document: the longest completion the plan call asks for,
+// and the system prompt, the teacher's prompt and the response schema.
+export const PLAN_OUTPUT_TOKENS = 8192;
+export const PLAN_OVERHEAD_TOKENS = 3000;
+
 // Largest file the picker accepts. It also bounds how much text a document can hold.
 export const MAX_FILE_MB = 20;
 export const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;

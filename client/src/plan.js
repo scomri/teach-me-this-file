@@ -1,6 +1,7 @@
 // Plan request and plan helpers. No React.
-import { MAX_DOC_CHARS, MINUTES_PER_STEP } from '../../shared/limits.js';
+import { MINUTES_PER_STEP } from '../../shared/limits.js';
 import { detectScript } from './ingest/script.js';
+import { planBudget, planInput } from './outline.js';
 
 export class PlanError extends Error {
   constructor(code) {
@@ -9,10 +10,11 @@ export class PlanError extends Error {
   }
 }
 
-// Asks the server for a plan. Throws PlanError with the server's code, or
-// 'document_too_long' / 'unreachable' decided here.
+// Asks the server for a plan: the whole text, or an outline when it does not fit the preset's
+// budget. Throws PlanError with the server's code, or 'document_too_long' (any 413) /
+// 'unreachable' decided here.
 export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl = fetch) {
-  if (doc.chunks.reduce((n, c) => n + c.text.length, 0) > MAX_DOC_CHARS) throw new PlanError('document_too_long');
+  const script = detectScript(doc.chunks.map((c) => c.text).join('\n')).script;
   let response;
   try {
     response = await fetchImpl('/api/plan', {
@@ -22,8 +24,8 @@ export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl =
         preset: settings.preset,
         teacher: settings.teacher,
         prompt,
-        script: detectScript(doc.chunks.map((c) => c.text).join('\n')).script,
-        chunks: doc.chunks.map(({ id, page, text }) => ({ id, page, text })),
+        script,
+        ...planInput(doc.chunks, script, planBudget(settings.preset)),
       }),
       signal,
     });

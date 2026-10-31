@@ -8,7 +8,7 @@ const MESSAGES = {
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   plan_invalid: "The model didn't return a usable plan. Try again, or change the request.",
-  document_too_long: 'This file is too long to plan in one request. Longer documents are not supported yet.',
+  document_too_long: 'The plan request was too large for the server. Try a shorter file, or a file with fewer pages.',
 };
 const FALLBACK = "The plan couldn't be made. Try again.";
 
