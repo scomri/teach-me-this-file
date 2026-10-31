@@ -9,9 +9,12 @@ const server = createApp()
   });
 
 // Cloud Run sends SIGTERM; stop accepting connections and exit.
+let shuttingDown = false;
 for (const sig of ['SIGTERM', 'SIGINT']) {
-  process.on(sig, () => {
+  process.once(sig, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     server.close(() => process.exit(0));
-    server.closeAllConnections(); // open SSE streams would otherwise block close
+    setTimeout(() => server.closeAllConnections(), 8_000).unref();
   });
 }
