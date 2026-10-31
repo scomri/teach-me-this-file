@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS } from '../../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { providerOutcome } from '../ai/errors.js';
@@ -9,28 +9,53 @@ import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
 const SCRIPTS = ['hebrew', 'arabic', 'latin', 'other'];
 const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, out_of_credit: 402, rate_limited: 429, unreachable: 502, plan_invalid: 502 };
 
-// Returns the checked request, or an error code.
+const invalid = { code: 'invalid_request' };
+// Ids and pages go into prompt attributes, so they are checked, not escaped.
+const isId = (id) => typeof id === 'string' && /^[\w-]{1,20}$/.test(id);
+
+// Returns the checked request, or an error code. The document is either `chunks` (the full text) or
+// an `outline` of it with `chunkIds`, the id of every chunk, in document order.
 function validateRequest(body) {
-  const { preset, teacher, prompt = '', script = 'other', chunks, wholeFile = false } = body ?? {};
-  if (!Object.hasOwn(PRESETS, preset)) return { code: 'invalid_request' };
-  if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > MAX_MODEL_CHARS)) return { code: 'invalid_request' };
-  if (typeof prompt !== 'string' || prompt.length > MAX_PROMPT_CHARS || !SCRIPTS.includes(script)) return { code: 'invalid_request' };
-  if (typeof wholeFile !== 'boolean' || !Array.isArray(chunks) || !chunks.length) return { code: 'invalid_request' };
+  const { preset, teacher, prompt = '', script = 'other', chunks, outline, chunkIds, wholeFile = false } = body ?? {};
+  if (!Object.hasOwn(PRESETS, preset)) return invalid;
+  if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > MAX_MODEL_CHARS)) return invalid;
+  if (typeof prompt !== 'string' || prompt.length > MAX_PROMPT_CHARS || !SCRIPTS.includes(script)) return invalid;
+  if (typeof wholeFile !== 'boolean' || (chunks === undefined) === (outline === undefined)) return invalid;
+
   const ids = new Set();
   let chars = 0;
-  for (const c of chunks) {
-    // The id and page go into prompt attributes, so they are checked, not escaped.
-    if (typeof c?.id !== 'string' || !/^[\w-]{1,20}$/.test(c.id) || ids.has(c.id) || typeof c.text !== 'string') return { code: 'invalid_request' };
-    if (c.page != null && !Number.isInteger(c.page)) return { code: 'invalid_request' };
-    ids.add(c.id);
-    chars += c.text.length;
+  if (chunks !== undefined) {
+    if (!Array.isArray(chunks) || !chunks.length) return invalid;
+    for (const c of chunks) {
+      if (!isId(c?.id) || ids.has(c.id) || typeof c.text !== 'string') return invalid;
+      if (c.page != null && !Number.isInteger(c.page)) return invalid;
+      ids.add(c.id);
+      chars += c.text.length;
+    }
+  } else {
+    if (!Array.isArray(outline) || !outline.length || !Array.isArray(chunkIds) || !chunkIds.length) return invalid;
+    const position = new Map();
+    for (const id of chunkIds) {
+      if (!isId(id) || position.has(id)) return invalid;
+      position.set(id, position.size);
+    }
+    let end = -1; // entries cover the document in order
+    for (const e of outline) {
+      if (!position.has(e?.first) || !position.has(e.last) || position.get(e.first) > position.get(e.last) || position.get(e.first) <= end) return invalid;
+      if (e.page != null && !Number.isInteger(e.page)) return invalid;
+      if (typeof e.heading !== 'string' || typeof e.text !== 'string') return invalid;
+      end = position.get(e.last);
+      chars += e.heading.length + e.text.length;
+    }
+    for (const id of position.keys()) ids.add(id);
   }
   if (chars > MAX_DOC_CHARS) return { code: 'document_too_long' };
-  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, ids, wholeFile };
+  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, outline, ids, wholeFile };
 }
 
-// POST /api/plan { preset, teacher?, prompt?, script?, chunks, wholeFile? } with X-Api-Key.
-// Answers { plan, constraints, coverage, coverageNote } (plan is null when coverage is 'none') or { code }. A rejected plan gets one repair retry.
+// POST /api/plan { preset, teacher?, prompt?, script?, chunks | outline + chunkIds, wholeFile? } with X-Api-Key.
+// Answers { plan, constraints, coverage, coverageNote } (plan is null when coverage is 'none') or { code }.
+// A rejected plan gets one repair retry.
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
   router.post('/plan', async (req, res) => {
@@ -49,7 +74,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
       for (let attempt = 0; attempt < 2; attempt++) {
         const response = await chatCompletion({
           preset: request.preset, apiKey, model: request.model, messages,
-          maxCompletionTokens: 8192, responseFormat: PLAN_RESPONSE_FORMAT, signal: controller.signal,
+          maxCompletionTokens: PLAN_OUTPUT_TOKENS, responseFormat: PLAN_RESPONSE_FORMAT, signal: controller.signal,
         }, fetchImpl);
         const code = await providerOutcome(response);
         if (code !== 'ok') return fail(code);

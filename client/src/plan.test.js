@@ -27,7 +27,6 @@ test('requestPlan sends chunks with the key header and maps failures to codes', 
   await assert.rejects(requestPlan({ doc, prompt: '', settings }, async () => Response.json({ code: 'invalid_key' }, { status: 401 })), { code: 'invalid_key' });
   await assert.rejects(requestPlan({ doc, prompt: '', settings }, async () => new Response('<html>', { status: 502 })), { code: 'unreachable' });
   await assert.rejects(requestPlan({ doc, prompt: '', settings }, async () => { throw new TypeError('offline'); }), { code: 'unreachable' });
-  await assert.rejects(requestPlan({ doc: { ...doc, chunks: [{ id: 'c1', page: 1, text: 'x'.repeat(100_001) }] }, prompt: '', settings }, ok), { code: 'document_too_long' });
 });
 
 test('an abort while the body is read is an abort, and an empty 200 is not a plan', async () => {
