@@ -1,9 +1,18 @@
+import { IngestError } from './errors.js';
+
 // Bytes of a text file to a string. UTF-8 and UTF-16 first; otherwise guess the
 // legacy Windows code page from byte ranges (Latin, Hebrew or Arabic).
 
-export function decodeText(bytes) {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes);
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes);
+export function decodeText(bytes, { allowDamagedText = false } = {}) {
+  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) {
+    const encoding = bytes[0] === 0xff ? 'utf-16le' : 'utf-16be';
+    try {
+      return new TextDecoder(encoding, { fatal: true }).decode(bytes);
+    } catch {
+      if (allowDamagedText) return new TextDecoder(encoding).decode(bytes);
+      throw new IngestError('damaged_text', 'Some text in this file may be damaged or missing.');
+    }
+  }
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {

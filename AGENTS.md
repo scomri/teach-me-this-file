@@ -64,7 +64,7 @@ The reviewer's API key goes from a settings field to the server in an `X-Api-Key
 
 ## Ingestion scope
 
-Decided and recorded in `DECISIONS.md` (File types, Chunks, Text direction, Text encoding, Long documents). In short: PDF, DOCX, PPTX, TXT and MD are read in the browser; legacy formats are refused with a "save as" message; the whole document is kept and only the plan request is size-limited; limits live in `shared/limits.js`. Unsupported, empty, or corrupt files must show a clear error state, not a crash.
+Decided and recorded in `DECISIONS.md` (File types, Chunks, Text direction, Text encoding, Long documents). In short: PDF, DOCX, PPTX, TXT and MD are read in the browser; legacy formats are refused with a "save as" message; the whole document is kept and only the plan request is size-limited; limits live in `shared/limits.js`. Unsupported, empty, or corrupt files must show a clear error state, not a crash. Malformed UTF-16 instead offers explicit continuation with replacement characters and a persistent warning; do not plan from it before the teacher chooses to continue. Files without readable text are refused.
 
 ## Out of scope (say so in the README and DECISIONS)
 

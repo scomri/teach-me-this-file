@@ -8,9 +8,10 @@ import { readPdf } from './pdf.js';
 
 export { IngestError };
 
-async function readText(file) {
-  const text = decodeText(new Uint8Array(await file.arrayBuffer()));
+async function readText(file, options) {
+  const text = decodeText(new Uint8Array(await file.arrayBuffer()), options);
   if (text.includes('\0')) throw new IngestError('unreadable', "This file doesn't contain readable text.");
+  if (options.allowDamagedText && !text.replace(/[�\p{C}\s]/gu, '')) throw new IngestError('unreadable', 'This file has no readable text. Choose another file.');
   return { pages: [{ page: null, pageLabel: null, heading: null, text }] };
 }
 
