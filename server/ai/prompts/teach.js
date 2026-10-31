@@ -21,20 +21,23 @@ export const TRANSITIONS = {
   opening: 'Open this step. Explain its idea briefly from the passages, then ask the check question in your own words. Do not give the answer to it, and do not mention that you are following instructions.',
   advance: "The student's answer to the check question in <answered_step> covered all its key points. Confirm in one short sentence that they are right, in your own words. Then open the step in <step_data>: explain its idea briefly from the passages and ask its check question in your own words, without giving its answer. Do not mention that you are following instructions.",
   nudge: "The student's last answer to the check question in <answered_step> does not yet cover all its key points. The key points listed there are the ones still missing. Guide toward them with a hint or a narrower question drawn from the passages, and never state a missing key point or confirm one outright. Read <conversation> and do not repeat an earlier hint. Do not mention that you are following instructions.",
-  reveal: "The student has tried the check question in <answered_step> twice without covering it. Reveal the answer now: explain every key point listed there from the passages, kindly and briefly, without making the student feel judged. Do not ask a question. End by saying that they can press Continue when they are ready.",
+  scaffold: 'The student asks for the answer. Give a scaffold toward the missing key points in <answered_step>, without stating them, then ask the check question again.',
+  answer_question: 'Answer the student’s question using only the passages if the question is covered; otherwise say this step’s material does not cover it. Then return to the check question without giving its answer.',
+  redirect: 'Respond briefly and kindly, redirect to the material, and ask the check question again. For distress, suggest speaking to a trusted adult. Decline unsafe requests.',
+  reveal: "The student needs the answer to the check question in <answered_step>. Reveal the answer now: explain every key point listed there from the passages, kindly and briefly, without making the student feel judged. Do not ask a question. End by saying that they can press Continue when they are ready.",
   recap: 'The lesson is over. Recap it for the student from <recap_data> in about 100 words: name what they understood on their own and what was explained to them, and encourage them. Do not ask a question. If <answered_step> is present, first confirm in one short sentence that the answer to its check question was right.',
 };
 
 // The key points each move carries. A nudge gets only the ones still missing, so a hint cannot give away
 // what the student already has or leak what they lack; every other move that carries them gets all.
 const keyPointsFor = (transition, { expected, pointsMet }) =>
-  transition === 'nudge' ? expected.filter((_, i) => !pointsMet.includes(i)) : expected;
+  ['nudge', 'scaffold'].includes(transition) ? expected.filter((_, i) => !pointsMet.includes(i)) : expected;
 
 const quoted = (s) => JSON.stringify(s);
 
 // `lesson`: { language, audience, style } as the teacher stated them (null when not stated), plus the
 // document's language as the planner named it. `step`: { index, total, title, objective, checkQuestion }.
-export function buildTeachMessages({ transition, lesson, step, chunks, answered, recap, history = [] }) {
+export function buildTeachMessages({ transition, lesson, step, chunks, answered, recap, history = [], questionCovered }) {
   // Written by the plan model from the file: fenced and quoted as data, like the chunks.
   const stepData = [
     '<step_data>',
@@ -47,7 +50,7 @@ export function buildTeachMessages({ transition, lesson, step, chunks, answered,
     '<answered_step>',
     `Title: ${neutralize(quoted(answered.title))}`,
     `Check question: ${neutralize(quoted(answered.checkQuestion))}`,
-    `${transition === 'nudge' ? 'Key points still missing' : 'Key points'}:`,
+    `${['nudge', 'scaffold'].includes(transition) ? 'Key points still missing' : 'Key points'}:`,
     ...keyPointsFor(transition, answered).map((p) => `- ${neutralize(quoted(p))}`),
     '</answered_step>',
   ].join('\n');
@@ -72,6 +75,6 @@ export function buildTeachMessages({ transition, lesson, step, chunks, answered,
   const reminder = language
     ? `Write the reply in ${quoted(language)}, whatever language the passages are in.`
     : 'Write the reply in the language of the passages.';
-  const user = [fenceChunks(chunks), stepData, answeredStep, recapData, conversation, state, TRANSITIONS[transition], reminder].filter(Boolean).join('\n\n');
+  const user = [fenceChunks(chunks), stepData, answeredStep, recapData, conversation, state, TRANSITIONS[transition], transition === 'answer_question' && !questionCovered && 'The evaluator found no relevant passages. Say the question is not covered by this step’s material.', reminder].filter(Boolean).join('\n\n');
   return [{ role: 'system', content: SYSTEM }, { role: 'user', content: user }];
 }

@@ -155,7 +155,7 @@ export default function App() {
       {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
       {restored && lesson.source && <p className="mt-2 text-sm text-slate-600">Restored your lesson on {lesson.source.name}.</p>}
       {(lesson.source || lesson.teacher.prompt) && <button type="button" className="mt-2 rounded border border-slate-300 px-3 py-1 text-sm" onClick={newLesson}>New lesson</button>}
-      {loaded && lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} openSettings={() => settingsRef.current.open()} />}
+      {loaded && lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
       {loaded && lesson.source && settings && !lesson.progress && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
 
       <textarea

@@ -12,7 +12,6 @@ const MESSAGES = {
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   timeout: 'The reply took too long. Try again.',
-  evaluation_invalid: "The tutor couldn't read that answer. Try again.",
   invalid_request: "The app sent a request the server couldn't accept. Try again.",
 };
 const EVALUATOR_NOT_FOUND = "The evaluator model wasn't found or isn't available for this key. Check the model settings.";
@@ -20,7 +19,7 @@ const FALLBACK = "The tutor couldn't reply. Try again.";
 
 // The lesson chat. The messages and progress live in the lesson state (`lesson`, `dispatch`); this
 // component keeps the requests in flight, the draft and the last error. It dispatches events and renders state.
-export default function Lesson({ lesson, dispatch, settings, openSettings }) {
+export default function Lesson({ lesson, dispatch, settings, saveCount, openSettings }) {
   const { plan, progress, source, messages } = lesson;
   const [error, setError] = useState(null); // { code, from: 'teacher' | 'evaluator' }
   const errorCode = error?.code;
@@ -33,15 +32,16 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
   // `snapshot`: the lesson as this reply sees it. The reducer has not rendered an event dispatched a moment
   // ago, and a reply must see the progress that event applied.
-  async function stream(transition, stepId, snapshot = latest.current.lesson) {
+  async function stream(transition, stepId, snapshot = latest.current.lesson, rateLimitRetried = false) {
     const ac = new AbortController();
     const run = { ac, id: null, stopped: false };
+    const sentKey = latest.current.settings.apiKey;
     current.current = run;
     setError(null);
     try {
       const s = latest.current.settings;
       await streamTeach({
-        request: teachRequest({ lesson: snapshot, transition, settings: s, stepId }), apiKey: s.apiKey, signal: ac.signal,
+        request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal,
         onStart(id) { run.id = id; if (run.stopped) halt(run); },
         onText: (text) => { if (current.current === run) dispatch({ type: 'teachChunk', text }); },
       });
@@ -50,7 +50,8 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
       if (current.current !== run) return; // the lesson screen closed: a newer reply is not ours to settle
       if (run.stopped || ac.signal.aborted) return dispatch({ type: 'teachStopped' });
       dispatch({ type: 'teachFailed' });
-      setError({ code: error.code, from: 'teacher' });
+      setError({ code: error.code, from: 'teacher', key: sentKey });
+      if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
       if (current.current === run) current.current = null;
     }
@@ -72,9 +73,9 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   }
 
   // Starts a tutor reply: the message shows at once, then streams.
-  function reply(transition, stepId, chunkIds, snapshot) {
+  function reply(transition, stepId, chunkIds, snapshot, rateLimitRetried) {
     dispatch({ type: 'teachStarted', stepId, transition, chunkIds });
-    stream(transition, stepId, snapshot);
+    stream(transition, stepId, snapshot, rateLimitRetried);
   }
 
   function open() {
@@ -83,28 +84,29 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   }
 
   // Evaluates the student's `message`, which `base` already holds. The evaluation is applied to progress
-  // before the reply streams, so a Stop or a failed reply cannot undo the move. The extension point for the
-  // other intents is the `!transition` branch.
+  // before the reply streams, so a Stop or a failed reply cannot undo the move.
   async function grade(message, base) {
     const ac = new AbortController();
+    const sentKey = latest.current.settings.apiKey;
     grading.current = ac;
     setEvaluating(true);
     setError(null);
     try {
-      const evaluation = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
+      const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
       if (grading.current !== ac) return;
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
       dispatch(event);
-      const { transition, relevantChunkIds } = after.messages.at(-1);
+      const { transition } = after.messages.at(-1);
       if (!transition) return;
       // The reply's step is the one progress is on now: the next step after an advance, else the answered one.
       const stepChunkIds = plan.steps.find((s) => s.id === after.progress.current).chunkIds;
-      // An advance teaches the next step, so it cites that step's chunks; the evaluator's ids are for the answer.
-      reply(transition, after.progress.current, transition !== 'advance' && relevantChunkIds.length ? relevantChunkIds : stepChunkIds, after);
+      // Cite every passage the teaching request supplies.
+      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
-      setError({ code: error.code, from: 'evaluator' });
+      setError({ code: error.code, from: 'evaluator', key: sentKey });
+      if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
       if (grading.current === ac) { grading.current = null; setEvaluating(false); }
     }
@@ -151,6 +153,13 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (saveCount && error?.code === 'invalid_key' && settings.apiKey !== error.key) {
+      if (error.from === 'evaluator') retryAnswer();
+      else again();
+    }
+  }, [saveCount]);
+
   const last = messages.at(-1);
   const streaming = last?.status === 'streaming';
   const pendingAnswer = last?.role === 'student' && last.intent === null;
@@ -171,7 +180,6 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
               <li key={i} className="rounded border border-slate-200 bg-slate-50 p-3">
                 <p className="text-xs font-medium text-slate-500">You</p>
                 <p dir="auto" className="whitespace-pre-wrap">{m.text}</p>
-                {m.intent && m.intent !== 'answer' && <p className="mt-1 text-xs text-slate-500">The tutor can't respond to this kind of message yet.</p>}
               </li>
             );
           }
@@ -190,7 +198,7 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
       {errorCode && (last?.status === 'failed' || pendingAnswer) && (
         <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-          {(error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
+          {(errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
         </p>
       )}

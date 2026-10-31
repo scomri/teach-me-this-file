@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { EVALUATE_OUTPUT_TOKENS, MAX_ANSWER_CHARS, MAX_MODEL_CHARS, MAX_TUTOR_CHARS } from '../../shared/limits.js';
+import { EVALUATE_OUTPUT_TOKENS, EVALUATION_MAX_ATTEMPTS, MAX_ANSWER_CHARS, MAX_MODEL_CHARS, MAX_TUTOR_CHARS, TURN_RATE_LIMIT_RETRIES } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { EVALUATION_RESPONSE_FORMAT, validateEvaluation } from '../ai/evaluate.js';
@@ -48,22 +48,28 @@ export function evaluateRouter(fetchImpl, timeoutMs = 30_000) {
     res.on('close', disconnect);
     try {
       let messages = buildEvaluateMessages(request);
-      for (let attempt = 0; attempt < 2; attempt++) {
-        const response = await chatCompletion({
+      let rateRetries = 0;
+      for (let attempt = 0; attempt < EVALUATION_MAX_ATTEMPTS; attempt++) {
+        let response = await chatCompletion({
           preset: request.preset, apiKey, model: request.model, messages,
           maxCompletionTokens: EVALUATE_OUTPUT_TOKENS, responseFormat: EVALUATION_RESPONSE_FORMAT, signal: controller.signal,
         }, fetchImpl);
-        const code = await providerOutcome(response);
+        let code = await providerOutcome(response);
+        if (code === 'rate_limited' && rateRetries < TURN_RATE_LIMIT_RETRIES) {
+          rateRetries++;
+          response = await chatCompletion({ preset: request.preset, apiKey, model: request.model, messages, maxCompletionTokens: EVALUATE_OUTPUT_TOKENS, responseFormat: EVALUATION_RESPONSE_FORMAT, signal: controller.signal }, fetchImpl);
+          code = await providerOutcome(response);
+        }
         if (code !== 'ok') return fail(code);
 
         const content = (await response.json().catch(() => null))?.choices?.[0]?.message?.content;
         let reply;
         try { reply = JSON.parse(content); } catch { reply = null; }
         const result = reply && typeof reply === 'object' ? validateEvaluation(reply, request.step.expected.length, request.ids) : { ok: false, errors: ['the reply was not a JSON object'] };
-        if (result.ok) return res.json({ evaluation: result.evaluation });
+        if (result.ok) return res.json({ evaluation: result.evaluation, ...(rateRetries && { rateLimitRetried: true }) });
         messages = repairMessages(messages, content, result.errors, 'evaluation');
       }
-      res.json({ evaluation: null }); // a failed repair: the caller decides what a missing evaluation means
+      res.json({ evaluation: null, ...(rateRetries && { rateLimitRetried: true }) });
     } catch {
       if (!res.destroyed) fail('unreachable'); // network failure, timeout, or a client that left
     } finally {
