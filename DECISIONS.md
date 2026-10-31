@@ -31,6 +31,8 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | UI language | English UI. Source text gets its direction from its script (see Text direction); other content, such as the student's own messages, uses `dir="auto"`. | Right-to-left material renders correctly. |
 | Evidence | Unit tests for the state machine, plus a scripted-student harness running ~5 scenarios. | "It looked fine to me" is not enough. |
 
+UTF-16 recovery verification: ingestion tests cover malformed input in both byte orders, valid UTF-16 and files with no readable text. A component test covers the warning, explicit continuation and replacing the file. A local browser check confirmed the warning and continuation; the recovery flow has not been checked on the deployed URL.
+
 ## Long-document provider measurements
 
 The settings below are heuristics, chosen to send an outline before requests become large; they were not calibrated to a measured quota. The document budget is the setting less the 11,192-token prompt and output allowances. Estimated document tokens select the input form; provider-reported input tokens below cover the full request, so the two are not directly comparable. The estimates for these historical runs were not recorded.
