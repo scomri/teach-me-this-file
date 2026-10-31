@@ -2,4 +2,5 @@ internal/
 .env
 node_modules/
 dist/
-.archify/.claude/
+.archify/
+.claude/
