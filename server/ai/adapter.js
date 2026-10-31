@@ -6,12 +6,12 @@ const PROVIDERS = {
 };
 
 // Returns the provider response so later routes can consume JSON or a stream.
-export async function chatCompletion({ preset, apiKey, model, messages, maxCompletionTokens = 16, stream = false, responseFormat, signal }, fetchImpl = fetch) {
+export async function chatCompletion({ preset, apiKey, model, messages, maxCompletionTokens = 16, stream = false, responseFormat, temperature = 0, signal }, fetchImpl = fetch) {
   const provider = PROVIDERS[preset];
   if (!provider) throw new Error('Unsupported preset');
   return fetchImpl(provider.url, {
     method: 'POST', redirect: 'error', signal,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model, messages, max_completion_tokens: maxCompletionTokens, stream, ...(responseFormat ? { response_format: responseFormat } : {}), ...(provider.temperature ? { temperature: 0 } : {}) }),
+    body: JSON.stringify({ model, messages, max_completion_tokens: maxCompletionTokens, stream, ...(responseFormat ? { response_format: responseFormat } : {}), ...(provider.temperature ? { temperature } : {}) }),
   });
 }

@@ -111,6 +111,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       {plan && (
         <PlanScreen
           plan={plan} constraints={lesson.teacher.constraints} doc={doc} busy={planning}
+          onStart={() => dispatch({ type: 'lessonStarted' })}
           onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
         />
       )}

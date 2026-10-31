@@ -73,6 +73,21 @@ On 2026-10-31 the deployed URL was checked after the outline change shipped. Wit
 
 **Not covered:** each case ran once, so output variance is not measured; the other three presets were measured only through local calls, not in the deployed app; and the wording the page shows for a 413 is covered by the client tests, not checked in the browser. Repeat runs and the other presets belong with the scenario harness.
 
+## Lesson start: the opening reply (built)
+
+Start on the plan screen opens step 1 and streams the tutor's `opening` reply from `POST /api/teach`. The lesson state (file, plan, progress, messages) is client-owned; each request carries the transition name, the lesson's stated constraints, the current step (title, objective, check question, "step i of n") and that step's chunks. The server builds every prompt from that structured data and the client sends no prompt text. An opening carries no key points, so the reply cannot give the answer away.
+
+- **One prompt frame for every transition.** The system message is a constant (persona, grounding, file text is data, Socratic rules, about 120 words, one question, safety floor), so it is identical for the whole lesson and a provider can cache it. The last user message holds the fenced chunks (with the same tag neutralizing as the plan call), a state line built by code, the transition instruction, and a reminder of the reply language last. Titles, objectives and questions are model-written from the file, so they enter the state line JSON-quoted. The language is the one the teacher stated, else the file's language as the planner named it, else the passages' own.
+- **One stream registry.** The echo stream and the teach stream share `openStream` in `server/streams.js`: the same `start` event with an id, the same cancel endpoint, the same 120 s cap, and one exit that also aborts the upstream provider call on cancel, cap or client disconnect. Cloud Run does not pass a disconnect to the container, so Stop sends the cancel request first and then closes the fetch; if Stop is pressed before the `start` event arrives, it is sent when the id arrives.
+- **Errors.** Bad input is a plain 400 before any stream opens (preset, model length, transition name, chunk ids, step text within the document cap). After the stream opens, a provider failure ends it with `event: error` and one of the shared fixed codes; provider text is never forwarded. A provider reply with no text, or a connection that closes without `done`, is `unreachable`, so a half-sent reply is a failed reply with Retry, never a finished one.
+- **Stop, Regenerate, Retry.** Stop keeps the partial text with status `stopped`. Regenerate and Retry are one reducer event: the last reply's stored transition runs again and the reply is replaced; progress is untouched. A reply that fails keeps its partial text and offers Retry.
+- **Temperature.** Plan and check calls stay at 0. The tutor reply is sampled at 1 (omitted for providers that do not accept it), so Regenerate can give a different reply.
+- **Output cap.** 2,048 tokens for about 120 words, because some models count reasoning tokens against the same limit.
+
+Verification: reducer tests (start, chunks, done, stopped, failed, regenerate, late events), route tests with a stub provider (event framing, cancel, disconnect and cap aborting the upstream call, chunk fencing, no key points, language reminder last, input validation, the key absent from logs), and a fake-DOM test through the real components (Start sends an opening request, Stop cancels and keeps the text, Regenerate repeats the transition, Retry after a failure). A browser run against a stub provider covered Start, a streamed reply, Stop, and Regenerate. No real-key run for this ticket.
+
+Known weaknesses: the step title, objective and question in the state line come from the plan model, not from the server's own data, so a planted instruction could reach the tutor as step text; the prompt tells the model they are material, not instructions, and the server does not check them against a plan. A reply cut by the output cap is shown as done; the 120-word limit is a prompt rule, not checked by code; the composer is disabled until answers are supported.
+
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.
