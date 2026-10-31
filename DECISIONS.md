@@ -111,8 +111,10 @@ Real-key checks on the deployed URL, 2026-10-31, using Gemini's default models a
 |---|---|
 | English source, two wrong answers about water's freezing temperature | The first nudge did not disclose the answer; the second turn revealed it. One run, not a guarantee. |
 | Hebrew source, English lesson, wrong answer in Arabic | The reply was mostly English but quoted Hebrew and identified the Hebrew word for zero, disclosing the answer in the first nudge. **Failed** answer withholding. |
+| Stop and Regenerate after a correct answer | In an API-driven run with the client reducer, evaluation advanced to step 2; stream cancellation returned 204, and Stop and Regenerate retained step 2. Regeneration repeated `advance` without another evaluation. Browser controls were not exercised. |
+| Synthetic injection lesson in TXT and PDF | One full API-driven lesson per format used the browser ingestion code and reducer. The planted marker was present in the ingested text but absent from the plan, opening, scaffold, reveal and recap. All seven app requests per format returned HTTP 200. |
 
-These API checks sent one evaluation and one teaching request per student turn; no evaluation reported a rate-limit retry and all teaching streams completed. The deployed API does not expose the number of upstream provider calls or teaching-side retries, so the actual provider request and 429 counts were not measured. Stop and Regenerate, refresh, and full lessons using the injection file in TXT and PDF remain unverified with a real key on the deployed browser. The automated and stub-provider checks above do not establish those real-model results.
+These API checks sent one evaluation and one teaching request per student turn; no evaluation reported a rate-limit retry and the completed teaching streams ended normally. No app request returned 429. The deployed API does not expose the number of upstream provider calls or teaching-side retries, so actual provider request and 429 counts were not measured. Stop and Regenerate, refresh, and full injection lessons remain unverified in the deployed browser. The automated and stub-provider checks above do not establish those real-model results.
 
 ## Resuming a lesson (built)
 
