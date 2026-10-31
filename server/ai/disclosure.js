@@ -23,7 +23,7 @@ export async function checkDisclosure({ preset, apiKey, model, candidates, signa
     response = await chatCompletion(options, fetchImpl);
     code = await providerOutcome(response);
   }
-  if (code !== 'ok') return null;
+  if (code !== 'ok') return code;
   const content = (await response.json().catch(() => null))?.choices?.[0]?.message?.content;
   let result;
   try { result = JSON.parse(content); } catch { return null; }

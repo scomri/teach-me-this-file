@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
 import { reduce } from '../lesson/lesson.js';
-import { sourcePages } from '../plan.js';
+import { checkPlan, sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
 
 const MESSAGES = {
@@ -25,6 +25,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   const errorCode = error?.code;
   const [draft, setDraft] = useState('');
   const [evaluating, setEvaluating] = useState(false);
+  const [checkingPlan, setCheckingPlan] = useState(false);
+  const [planError, setPlanError] = useState(null);
+  const planCheck = useRef(null);
   const current = useRef(null); // the stream in flight: { ac, id, stopped }
   const grading = useRef(null); // the evaluation in flight: its AbortController
   const latest = useRef({});
@@ -142,9 +145,25 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     stream(transition, stepId, reduce(lesson, event)); // the reply being replaced is not part of its own history
   }
 
+  async function validatePlan() {
+    const ac = new AbortController();
+    planCheck.current = ac;
+    setCheckingPlan(true);
+    setPlanError(null);
+    try {
+      await checkPlan({ plan, settings: latest.current.settings, signal: ac.signal });
+      if (!ac.signal.aborted) dispatch({ type: 'planValidated' });
+    } catch (error) {
+      if (!ac.signal.aborted) setPlanError(error);
+    } finally {
+      if (planCheck.current === ac) { planCheck.current = null; setCheckingPlan(false); }
+    }
+  }
+
   useEffect(() => {
     if (!messages.length) open();
     return () => {
+      planCheck.current?.abort();
       grading.current?.abort();
       grading.current = null;
       const run = current.current;
@@ -172,6 +191,11 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     <section className="mt-6">
       <h2 dir="auto" className="text-xl font-semibold">{plan.title}</h2>
       <p className="mt-1 text-sm text-slate-600">Step {index + 1} of {plan.steps.length}</p>
+      {!plan.validated && <div role="status" className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+        <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
+        <button className="underline disabled:opacity-40" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
+        {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}</p>}
+      </div>}
 
       <ol className="mt-4 space-y-3" aria-live="polite">
         {messages.map((m, i) => {

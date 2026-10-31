@@ -64,7 +64,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       dispatch({ type: 'planValidated' });
       setState({ status: 'done' });
     } catch (error) {
-      if (!ac.signal.aborted) setState({ status: 'error', code: error.code, flagged: error.flagged });
+      if (!ac.signal.aborted) setState({ status: error.code === 'invalid_key' ? 'check_key_rejected' : 'error', code: error.code, flagged: error.flagged });
     }
   }
 
@@ -77,6 +77,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
 
   useEffect(() => {
     if (saveCount && state.status === 'key_rejected') runPlan({ wholeFile: state.wholeFile, prompt: state.prompt });
+    if (saveCount && state.status === 'check_key_rejected') validateRestored();
   }, [saveCount]);
 
   const { status, coverage } = state;
@@ -112,10 +113,10 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
             <button className="underline" onClick={openSettings}>Open Settings</button>
           </p>
         )}
-        {status === 'error' && (
+        {['error', 'check_key_rejected'].includes(status) && (
           <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-            {MESSAGES[state.code] ?? FALLBACK}{' '}
-            {state.code === 'model_not_found' && <button className="underline" onClick={openSettings}>Open Settings</button>}
+            {state.code === 'invalid_key' ? 'Your key was rejected.' : MESSAGES[state.code] ?? FALLBACK}{' '}
+            {['invalid_key', 'model_not_found'].includes(state.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}
           </p>
         )}
       </div>

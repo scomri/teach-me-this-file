@@ -90,6 +90,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     res.on('close', disconnect);
     try {
       const flagged = await checkDisclosure({ preset, apiKey, model: evaluator?.trim() || PRESETS[preset].evaluator, signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
+      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged });
       if (flagged === null) return res.status(502).json({ code: 'plan_check_failed' });
       return res.json({ flagged });
     } catch { if (!res.destroyed) res.status(502).json({ code: 'plan_check_failed' }); }
@@ -126,6 +127,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
           if (!plan) return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
           let flagged = null;
           try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.evaluator, signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
+          if (typeof flagged === 'string') return fail(flagged);
           if (flagged === null) return res.status(502).json({ code: 'plan_check_failed', ...(lastFlagged.length && { flagged: lastFlagged }) });
           if (!flagged.length) return res.json({ plan: { ...plan, validated: true }, constraints, coverage, coverageNote, documentLanguage });
           lastFlagged = flagged.map((i) => i + 1);

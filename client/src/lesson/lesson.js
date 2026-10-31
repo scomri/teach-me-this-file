@@ -75,7 +75,7 @@ export function reduce(state, event) {
       };
     }
     case 'planValidated':
-      return state.plan && !state.progress ? { ...state, plan: { ...state.plan, validated: true } } : state;
+      return state.plan ? { ...state, plan: { ...state.plan, validated: true } } : state;
     case 'lessonStarted': {
       if (!state.plan || state.plan.validated !== true || state.progress) return state;
       const steps = Object.fromEntries(state.plan.steps.map((s, i) => [s.id, { status: i === 0 ? 'active' : 'pending', pointsMet: [], fails: 0, asks: 0 }]));

@@ -54,7 +54,7 @@ test('every protected transition fails closed on malformed validation, with loca
     const res = await post('teach', body); assert.equal(res.status, 200);
     const text = await res.text(); assert.doesNotMatch(text, /SECRET DRAFT/); assert.match(text, /event: done/);
     if (body.transition === 'answer_question') assert.match(text, /לא הצלחתי/);
-    if (body.transition === 'redirect') assert.match(text, /راجع المادة/);
+    if (body.transition === 'redirect') assert.match(text, /شخص بالغ/);
   }
   assert.equal(calls.length, 12);
   assert.ok(calls.filter((c) => !c.stream).every((c) => c.model === 'checker'));
@@ -76,6 +76,24 @@ test('validator failure and missing key cannot validate a restored plan', async 
   assert.equal((await post('plan/check', request, '')).status, 401);
   assert.equal((await post('plan/check', request)).status, 502);
   assert.equal(count, 1);
+});
+
+test('plan validation preserves evaluator credential failures', async (t) => {
+  let calls = 0;
+  const post = await serve(t, async () => ++calls === 1 ? wrapped(plan) : new Response('{}', { status: 401 }));
+  const res = await post('plan', { preset: 'gemini', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] });
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).code, 'invalid_key');
+  const check = await post('plan/check', { preset: 'gemini', steps: [{ checkQuestion: 'Why?', expected: ['energy'] }] });
+  assert.equal(check.status, 401);
+});
+
+test('advance and redirect fallbacks retain their transition purpose', async (t) => {
+  const post = await serve(t, async (_, init) => JSON.parse(init.body).stream ? streamText('draft') : wrapped({ flagged: [0], uncertain: false }));
+  const advance = await (await post('teach', requestFor('advance', { answered: { ...answered, pointsMet: [0, 1] } }))).text();
+  assert.match(advance, /correct/i);
+  const redirect = await (await post('teach', requestFor('redirect'))).text();
+  assert.match(redirect, /trusted adult/i);
 });
 
 test('validation uses the remaining shared rate limit retry and never retries malformed results', async (t) => {
@@ -139,7 +157,7 @@ test('an unavailable recheck reports validation failure and the previously flagg
   const replies = [plan, { flagged: [0], uncertain: false }, plan];
   const post = await serve(t, async () => replies.length ? wrapped(replies.shift()) : new Response('{}', { status: 503 }));
   const res = await post('plan', { preset: 'gemini', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] });
-  assert.deepEqual(await res.json(), { code: 'plan_check_failed', flagged: [1] });
+  assert.deepEqual(await res.json(), { code: 'unreachable', flagged: [1] });
 });
 
 
