@@ -11,7 +11,7 @@ The app needs a public URL, server-side streaming of model replies, and a server
 - **One container on Google Cloud Run** (`europe-west1`). Express serves both the built client and `/api`: one URL, so no CORS.
 - **Multi-stage image.** `node:24.22.1` builds the client and `node:24.22.1-slim` runs it, as the `node` user, with production dependencies only. An allowlist `.dockerignore` and `.gcloudignore` keep anything outside `server/`, `client/` and the package files out of the build.
 - **max-instances 1, min-instances 0.** Cost is capped by the instance limit; a budget alert covers anything unexpected. Min-instances goes to 1 only for the review window, to avoid cold starts there.
-- **Manual deploy, no CD.** One documented command (`gcloud run deploy --source .`). CI runs tests, build and a secret scan, and holds no cloud credentials.
+- **Manual deploy, no CD.** One documented command (`gcloud run deploy --source .`). CI runs tests, build and a secret scan, and holds no cloud credentials. *Superseded by [ADR 0004](0004-continuous-deploy.md): CI now deploys every push to `main` after tests pass, with short-lived credentials and no stored key.*
 - **Explicit stream cancel.** Cloud Run's front end keeps its connection to the container open after the browser disconnects. A 60-word stream cut off by the client after 1.2 s still ran for its full 9 s on the server. So each stream opens with a random id, and Stop calls `POST /api/streams/:id/cancel`. Every stream also ends after 120 s at most.
 
 ## Consequences

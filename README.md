@@ -31,15 +31,17 @@ docker run --rm -p 8080:8080 teach-me-this-file:local   # http://localhost:8080
 
 Live: https://teach-me-this-file-630387171976.europe-west1.run.app
 
-Deploys are manual: one command, run from a clean checkout of `main` with `gcloud` authenticated against the project. Cloud Build builds the `Dockerfile`, and `.gcloudignore` limits the upload to the build inputs.
+Every push to `main` deploys automatically. The `deploy` job in `.github/workflows/ci.yml` runs only after tests, the build and the secret scan pass, and signs in to Google Cloud with Workload Identity Federation, so GitHub stores no cloud key. The URL stays the same; each deploy adds a new Cloud Run revision. See [ADR 0004](docs/adr/0004-continuous-deploy.md).
+
+Cloud Build builds the `Dockerfile`, and `.gcloudignore` limits the upload to the build inputs. The job runs the command below, which also works as a manual fallback from a clean checkout of `main` with `gcloud` authenticated against the project:
 
 ```sh
 gcloud run deploy teach-me-this-file --source . --region europe-west1 \
-  --allow-unauthenticated --max-instances 1 --min-instances 0 \
+  --allow-unauthenticated --max-instances 1 \
   --memory 512Mi --cpu 1 --concurrency 80 --timeout 300
 ```
 
-Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /api/streams/:id/cancel`) must reach the same instance as the stream. Do not add `--use-http2`, because the server speaks HTTP/1.1 only.
+Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /api/streams/:id/cancel`) must reach the same instance as the stream. Do not add `--use-http2`, because the server speaks HTTP/1.1 only. `--min-instances` is left out so a deploy keeps the service's current value.
 
 ## Model connection
 
