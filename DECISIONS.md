@@ -14,7 +14,7 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | Area | Decision | Why |
 |---|---|---|
 | Architecture | Layers: `ai/` (server: provider adapter, prompts, output validation), `lesson/` (pure JS state machine), `ui/` (React). File reading sits in `ingest/` (pure, in the browser). | Separation the brief asks for. Lesson and ingestion logic are testable without React or network. |
-| Lesson state | Client owns plan and progress, saved in IndexedDB. Server is stateless. API key stays in memory by default, with opt-in tab storage. **Built so far:** one pure reducer (`client/src/lesson/`) holds the file (with its direction and the language the planner names), the teacher's prompt and constraints, and the plan; the file picker and the plan screen dispatch events into it. Progress, messages and IndexedDB come with the tutor loop. | Survives refreshes and free-tier cold starts. |
+| Lesson state | Client owns plan and progress, saved in IndexedDB. Server is stateless. API key stays in memory by default, with opt-in tab storage. **Built so far:** one pure reducer (`client/src/lesson/`) holds the file (with its direction and the language the planner names), the teacher's prompt and constraints, and the plan; the file picker and the plan screen dispatch events into it. Progress and messages come with the tutor loop; the whole state is saved in IndexedDB (see Resuming a lesson). | Survives refreshes and free-tier cold starts. |
 | Tutor loop | Per student message: a small JSON evaluation call (`correct`, `partial`, `wrong`, `asks_for_answer`, `off_topic`, `question`), code picks the transition, then a streamed teaching reply. | The model proposes, code decides. One call with a JSON header was brittle across providers. |
 | Teaching policy | Reveal after two failed attempts. "Just tell me" gets one scaffold first. Off-topic doesn't count as an attempt. End recap: mastered vs revealed. | Baseline, tuned during build. |
 | Grounding | Every message teaches from chunks of the source (see Chunks below). Citations are the evaluator's chunk ids, checked against the current step. | No invented citations. The UI can show the source passage. |
@@ -100,6 +100,7 @@ A refresh, a reopened tab or a server cold start brings the lesson back. The les
 - **Why IndexedDB is checked by hand.** The wrapper is about thirty lines over a browser API. A stub such as `fake-indexeddb` would test the stub rather than the browser, so the rules (what is saved, when, what a load returns) are unit-tested as pure functions and the wrapper was run in a real browser against a stub provider: refresh during plan review, refresh mid-lesson, refresh mid-stream (the reply shows as stopped with Regenerate), New lesson asking first, and a storage failure showing the notice while the lesson still works. A storage failure at load (as opposed to at save) shares the same notice code but was not driven in the browser.
 
 Known weakness: text streamed since a reply started is not saved, so a reload mid-stream brings the reply back as stopped with its text empty (or as it was when the reply began); Regenerate recovers it. Saving the text on a timer would narrow this at the cost of more writes.
+
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.

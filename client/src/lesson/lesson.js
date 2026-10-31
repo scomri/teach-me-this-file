@@ -82,7 +82,7 @@ export const savedRecord = (s) => ({ version: s.version, source: s.source, teach
 // A reply cut off by a reload was streaming; it comes back stopped with the text saved so far.
 export function normalizeSaved(saved) {
   if (saved == null) return { lesson: null, discarded: false };
-  if (typeof saved !== 'object' || saved.version !== initialLesson().version || !Array.isArray(saved.messages)) return { lesson: null, discarded: true };
+  if (typeof saved !== 'object' || saved.version !== initialLesson().version || !Array.isArray(saved.messages) || typeof saved.teacher !== 'object' || saved.teacher === null) return { lesson: null, discarded: true };
   const messages = saved.messages.map((m) => (m.status === 'streaming' ? { ...m, status: 'stopped' } : m));
   return { lesson: { ...savedRecord(saved), messages }, discarded: false };
 }

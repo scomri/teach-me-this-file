@@ -24,6 +24,12 @@ test('normalizeSaved discards a version mismatch or a non-lesson', () => {
   }
 });
 
+test('normalizeSaved discards a record without a teacher object', () => {
+  for (const teacher of [undefined, null, 'x']) {
+    assert.deepEqual(normalizeSaved({ ...initialLesson(), teacher }), { lesson: null, discarded: true });
+  }
+});
+
 test('normalizeSaved passes a valid lesson through; nothing saved is not a discard', () => {
   const plain = planned();
   assert.deepEqual(normalizeSaved(plain), { lesson: plain, discarded: false });

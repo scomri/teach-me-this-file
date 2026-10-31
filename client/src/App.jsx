@@ -9,7 +9,7 @@ import PlanLesson from './ui/PlanLesson.jsx';
 // lessonRestored swaps in the lesson loaded at startup; the lesson reducer itself does not know about storage.
 const reduceApp = (state, event) => (event.type === 'lessonRestored' ? event.lesson : reduce(state, event));
 const storageNotice = 'Browser storage is unavailable. This lesson is kept in memory and will be lost on refresh.';
-const versionNotice = 'The saved lesson was made by an older version of the app and could not be opened.';
+const versionNotice = 'The saved lesson was made by a different version of the app and could not be opened.';
 
 export default function App() {
   const [api, setApi] = useState('checking...');
@@ -22,7 +22,7 @@ export default function App() {
   const [lessonNotice, setLessonNotice] = useState('');
   const [restored, setRestored] = useState(false);
   const [fresh, setFresh] = useState(0); // remounts the file picker on New lesson
-  const savedRef = useRef(null); // the last state handed to storage; null once storage is known unavailable
+  const storageOff = useRef(false); // set once storage fails: the lesson stays in memory
   const prevRef = useRef(null);
   const [settings, setSettings] = useState(null);
   const [saveCount, setSaveCount] = useState(0);
@@ -45,28 +45,30 @@ export default function App() {
       const { lesson: found, discarded } = normalizeSaved(saved);
       if (discarded) { setLessonNotice(versionNotice); clearSaved().catch(() => {}); }
       if (found) { dispatch({ type: 'lessonRestored', lesson: found }); setRestored(true); }
-      prevRef.current = found ?? initialLesson();
       setLoaded(true);
     }).catch(() => {
       if (!live) return;
       setLessonNotice(storageNotice);
-      savedRef.current = false;
+      storageOff.current = true;
       setLoaded(true);
     });
     return () => { live = false; };
   }, []);
 
   useEffect(() => { // save after every change except stream chunks; an empty lesson clears the record
-    if (!loaded || savedRef.current === false || !prevRef.current) return;
+    if (!loaded || storageOff.current) return;
     const prev = prevRef.current;
     prevRef.current = lesson;
+    if (!prev) return; // the first state after the load is what was loaded: nothing to write
     if (!shouldSave(prev, lesson)) return;
     const empty = !lesson.source && !lesson.teacher.prompt;
-    (empty ? clearSaved() : putSaved(savedRecord(lesson))).catch(() => { savedRef.current = false; setLessonNotice(storageNotice); });
+    (empty ? clearSaved() : putSaved(savedRecord(lesson))).catch(() => { storageOff.current = true; setLessonNotice(storageNotice); });
   }, [lesson, loaded]);
 
+  const confirmDiscard = () => !lesson.source || window.confirm('Start a new lesson? The current lesson will be deleted.');
+
   function newLesson() {
-    if (lesson.source && !window.confirm('Start a new lesson? The current lesson will be deleted.')) return;
+    if (!confirmDiscard()) return;
     dispatch({ type: 'newLesson' });
     setRestored(false);
     setFresh((n) => n + 1);
@@ -150,7 +152,7 @@ export default function App() {
       <p className="mt-2 text-slate-600">API: {api}</p>
 
       {lessonNotice && <p role="status" className="mt-2 text-sm text-amber-900">{lessonNotice}</p>}
-      <FileIngest key={fresh} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />
+      {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
       {restored && lesson.source && <p className="mt-2 text-sm text-slate-600">Restored your lesson on {lesson.source.name}.</p>}
       {(lesson.source || lesson.teacher.prompt) && <button type="button" className="mt-2 rounded border border-slate-300 px-3 py-1 text-sm" onClick={newLesson}>New lesson</button>}
       {loaded && lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} openSettings={() => settingsRef.current.open()} />}
