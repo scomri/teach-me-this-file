@@ -35,7 +35,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   // `snapshot`: the lesson as this reply sees it. The reducer has not rendered an event dispatched a moment
   // ago, and a reply must see the progress that event applied.
-  async function stream(transition, stepId, snapshot = latest.current.lesson, rateLimitRetried = false) {
+  async function stream(transition, stepId, snapshot = latest.current.lesson, rateLimitRetried = false, turnId) {
     const ac = new AbortController();
     const run = { ac, id: null, stopped: false };
     const sentKey = latest.current.settings.apiKey;
@@ -44,7 +44,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     try {
       const s = latest.current.settings;
       await streamTeach({
-        request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal,
+        request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal, turnId,
         onStart(id) { run.id = id; if (run.stopped) halt(run); },
         onText: (text) => { if (current.current === run) dispatch({ type: 'teachChunk', text }); },
       });
@@ -76,9 +76,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   }
 
   // Starts a tutor reply: the message shows at once, then streams.
-  function reply(transition, stepId, chunkIds, snapshot, rateLimitRetried) {
+  function reply(transition, stepId, chunkIds, snapshot, rateLimitRetried, turnId) {
     dispatch({ type: 'teachStarted', stepId, transition, chunkIds });
-    stream(transition, stepId, snapshot, rateLimitRetried);
+    stream(transition, stepId, snapshot, rateLimitRetried, turnId);
   }
 
   function open() {
@@ -90,12 +90,13 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   // before the reply streams, so a Stop or a failed reply cannot undo the move.
   async function grade(message, base) {
     const ac = new AbortController();
+    const turnId = crypto.randomUUID();
     const sentKey = latest.current.settings.apiKey;
     grading.current = ac;
     setEvaluating(true);
     setError(null);
     try {
-      const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
+      const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal, turnId });
       if (grading.current !== ac) return;
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
@@ -105,7 +106,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       // The reply's step is the one progress is on now: the next step after an advance, else the answered one.
       const stepChunkIds = plan.steps.find((s) => s.id === after.progress.current).chunkIds;
       // Cite every passage the teaching request supplies.
-      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried);
+      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried, turnId);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
       setError({ code: error.code, from: 'evaluator', key: sentKey });

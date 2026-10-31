@@ -38,6 +38,16 @@ function provider(...replies) {
 }
 const good = reply({ intent: 'answer', keyPointsMet: [1], relevantChunkIds: ['c1'] });
 
+test('provider telemetry counts retries without exposing request data', async (t) => {
+  const { url, lines } = start(t, { providerFetch: provider(429, good) });
+  const id = 'c4f4350f-e743-4bae-bf62-ce5122c2ad17';
+  assert.equal((await evaluate(url, request(), { 'X-Api-Key': KEY, 'X-Turn-Id': id })).status, 200);
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.deepEqual(event, { event: 'provider_attempts', turnId: id, operation: 'evaluate', attempts: 2, rateLimits: 1 });
+  assert.ok(!JSON.stringify(lines).includes(KEY));
+  assert.ok(!JSON.stringify(lines).includes('for energy'));
+});
+
 test('the rate limit retry and schema repair share the turn budget', async (t) => {
   const providerFetch = provider(429, reply('invalid'), good);
   const { url } = start(t, { providerFetch });

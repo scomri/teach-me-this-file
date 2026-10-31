@@ -27,12 +27,12 @@ export function evaluateRequest({ lesson, message, settings }) {
 
 // Resolves with { evaluation, rateLimitRetried? }; evaluation can be null after a failed repair.
 // Throws EvaluateError with the server's code or 'unreachable', or AbortError when `signal` aborted.
-export async function requestEvaluation({ lesson, message, settings, signal }, fetchImpl = fetch) {
+export async function requestEvaluation({ lesson, message, settings, signal, turnId }, fetchImpl = fetch) {
   let response;
   try {
     response = await fetchImpl('/api/evaluate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey, ...(turnId && { 'X-Turn-Id': turnId }) },
       body: JSON.stringify(evaluateRequest({ lesson, message, settings })),
       signal,
     });

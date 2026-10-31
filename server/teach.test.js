@@ -56,6 +56,33 @@ const events = (body) => body.split('\n\n').filter(Boolean).map((block) => {
   return [name, JSON.parse(/^data: (.*)$/m.exec(block)[1])];
 });
 
+test('teaching telemetry records provider 429 retries and rejects unsafe correlation ids', async (t) => {
+  const providerFetch = provider([], { status: 429 });
+  const { url, lines } = start(t, { providerFetch });
+  await (await teach(url, request(), { 'X-Api-Key': KEY, 'X-Turn-Id': 'private-content' })).text();
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.equal(event.operation, 'teach');
+  assert.equal(event.attempts, 2);
+  assert.equal(event.rateLimits, 2);
+  assert.match(event.turnId, /^[0-9a-f-]{36}$/);
+  assert.ok(!JSON.stringify(lines).includes('private-content'));
+  assert.ok(!JSON.stringify(lines).includes(KEY));
+});
+
+test('teaching telemetry includes disclosure checks and their retries', async (t) => {
+  let calls = 0;
+  const { url, lines } = start(t, { providerFetch: async () => {
+    calls++;
+    if (calls === 1) return new Response(providerStream(sse(['A safe hint.'])));
+    if (calls === 2) return new Response('{}', { status: 429 });
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ flagged: [], uncertain: false }) } }] });
+  } });
+  await (await teach(url, request())).text();
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.equal(event.attempts, 3);
+  assert.equal(event.rateLimits, 1);
+});
+
 test('the reply streams as start, text chunks, then done', async (t) => {
   const providerFetch = provider();
   const { url, streams } = start(t, { providerFetch });

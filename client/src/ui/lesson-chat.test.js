@@ -336,10 +336,13 @@ test('two wrong answers: a nudge, then a reveal with all points; Continue opens 
   const first = await send(ui, 'x');
   await ui.feed(() => first.answer(wrong));
   assert.equal(ui.teach[1].body.transition, 'nudge');
+  assert.match(first.headers['X-Turn-Id'], /^[0-9a-f-]{36}$/);
+  assert.equal(ui.teach[1].headers['X-Turn-Id'], first.headers['X-Turn-Id']);
   assert.deepEqual(ui.teach[1].body.answered.pointsMet, []);
   await reply(ui, 1, 'Think about light.');
   assert.equal(ui.button('Continue'), undefined);
   const second = await send(ui, 'y');
+  assert.notEqual(second.headers['X-Turn-Id'], first.headers['X-Turn-Id']);
   assert.deepEqual(second.body.earlier, ['x'], 'earlier answers on the step travel with the next one');
   await ui.feed(() => second.answer(wrong));
   assert.equal(ui.teach[2].body.transition, 'reveal');

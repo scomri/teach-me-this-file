@@ -4,6 +4,7 @@ import { PRESETS } from '../../shared/presets.js';
 import { protectsUnansweredPoints } from '../../shared/transitions.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { checkDisclosure } from '../ai/disclosure.js';
+import { providerTelemetry } from '../ai/telemetry.js';
 import { CAPS, MAX_POINTS } from '../ai/plan.js';
 import { providerOutcome } from '../ai/errors.js';
 import { buildTeachMessages, TRANSITIONS } from '../ai/prompts/teach.js';
@@ -123,6 +124,7 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return res.status(401).json({ code: 'invalid_key' });
 
+    const telemetry = providerTelemetry(req, 'teach', log, fetchImpl);
     const stream = openStream(req, res, { log, streams, maxMs: streamMaxMs });
     try {
       const options = {
@@ -131,10 +133,10 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       };
       let retried = request.rateLimitRetried;
       const retry = () => { if (retried || TURN_RATE_LIMIT_RETRIES < 1) return false; retried = true; return true; };
-      let response = await chatCompletion(options, fetchImpl);
+      let response = await chatCompletion(options, telemetry.fetch);
       let code = await providerOutcome(response);
       if (code === 'rate_limited' && retry()) {
-        response = await chatCompletion(options, fetchImpl);
+        response = await chatCompletion(options, telemetry.fetch);
         code = await providerOutcome(response);
       }
       if (code !== 'ok') return stream.end(code);
@@ -148,13 +150,15 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       if (!any || (protectedReply && !complete)) return stream.end('unreachable');
       if (protectedReply) {
         let flagged = null;
-        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.evaluator, signal: stream.signal, fetchImpl, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints }] }); } catch { /* fail closed */ }
+        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.evaluator, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints }] }); } catch { /* fail closed */ }
         if (stream.signal.aborted) return;
         stream.write({ text: flagged?.length === 0 ? draft : fallback(request) });
       }
       stream.end('done');
     } catch {
       stream.end('unreachable'); // network failure, or the stream already ended (cancel, cap, a client that left)
+    } finally {
+      telemetry.finish();
     }
   });
   return router;

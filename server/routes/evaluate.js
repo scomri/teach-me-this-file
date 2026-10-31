@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { EVALUATE_OUTPUT_TOKENS, EVALUATION_MAX_ATTEMPTS, MAX_ANSWER_CHARS, MAX_MODEL_CHARS, MAX_TUTOR_CHARS, TURN_RATE_LIMIT_RETRIES } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
+import { providerTelemetry } from '../ai/telemetry.js';
 import { EVALUATION_RESPONSE_FORMAT, validateEvaluation } from '../ai/evaluate.js';
 import { providerOutcome } from '../ai/errors.js';
 import { CAPS, MAX_POINTS } from '../ai/plan.js';
@@ -33,7 +34,7 @@ function validateRequest(body) {
 // POST /api/evaluate { preset, evaluator?, step: { objective, checkQuestion, expected }, chunks, lastTutor,
 // earlier: [string], message } with X-Api-Key. Answers { evaluation: { intent, keyPointsMet, relevantChunkIds } }
 // or { code }. A reply that breaks the schema gets one repair retry; if that fails too, { evaluation: null }.
-export function evaluateRouter(fetchImpl, timeoutMs = 30_000) {
+export function evaluateRouter(fetchImpl, timeoutMs = 30_000, log = console.log) {
   const router = Router();
   router.post('/evaluate', async (req, res) => {
     const fail = (code) => res.status(STATUS[code]).json({ code });
@@ -41,6 +42,7 @@ export function evaluateRouter(fetchImpl, timeoutMs = 30_000) {
     if (!request) return fail('invalid_request');
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return fail('invalid_key');
+    const telemetry = providerTelemetry(req, 'evaluate', log, fetchImpl);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -53,11 +55,11 @@ export function evaluateRouter(fetchImpl, timeoutMs = 30_000) {
         let response = await chatCompletion({
           preset: request.preset, apiKey, model: request.model, messages,
           maxCompletionTokens: EVALUATE_OUTPUT_TOKENS, responseFormat: EVALUATION_RESPONSE_FORMAT, signal: controller.signal,
-        }, fetchImpl);
+        }, telemetry.fetch);
         let code = await providerOutcome(response);
         if (code === 'rate_limited' && rateRetries < TURN_RATE_LIMIT_RETRIES) {
           rateRetries++;
-          response = await chatCompletion({ preset: request.preset, apiKey, model: request.model, messages, maxCompletionTokens: EVALUATE_OUTPUT_TOKENS, responseFormat: EVALUATION_RESPONSE_FORMAT, signal: controller.signal }, fetchImpl);
+          response = await chatCompletion({ preset: request.preset, apiKey, model: request.model, messages, maxCompletionTokens: EVALUATE_OUTPUT_TOKENS, responseFormat: EVALUATION_RESPONSE_FORMAT, signal: controller.signal }, telemetry.fetch);
           code = await providerOutcome(response);
         }
         if (code !== 'ok') return fail(code);
@@ -73,7 +75,7 @@ export function evaluateRouter(fetchImpl, timeoutMs = 30_000) {
     } catch {
       if (!res.destroyed) fail('unreachable'); // network failure, timeout, or a client that left
     } finally {
-      clearTimeout(timer); res.off('close', disconnect);
+      telemetry.finish(); clearTimeout(timer); res.off('close', disconnect);
     }
   });
   return router;

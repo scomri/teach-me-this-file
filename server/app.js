@@ -24,7 +24,7 @@ export function createApp({ log = console.log, streamMaxMs, providerFetch, check
   app.get('/api/health', (req, res) => res.json({ ok: true }));
   app.use('/api', checkRouter(providerFetch, checkTimeoutMs));
   app.use('/api', planRouter(providerFetch, planTimeoutMs));
-  app.use('/api', evaluateRouter(providerFetch, evaluateTimeoutMs));
+  app.use('/api', evaluateRouter(providerFetch, evaluateTimeoutMs, log));
   app.use('/api', echoRouter(log, streams, streamMaxMs));
   app.use('/api', teachRouter(providerFetch, log, streams, streamMaxMs));
   app.use('/api', cancelRouter(streams));

@@ -53,12 +53,12 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
 // Streams one reply: onStart(id) when the server names the stream, onText(text) per chunk. Resolves when
 // the reply is done. Throws TeachError with the server's code, 'unreachable' for a network failure, or the
 // AbortError when `signal` aborted.
-export async function streamTeach({ request, apiKey, signal, onStart, onText }, fetchImpl = fetch) {
+export async function streamTeach({ request, apiKey, signal, onStart, onText, turnId }, fetchImpl = fetch) {
   let response;
   try {
     response = await fetchImpl('/api/teach', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, ...(turnId && { 'X-Turn-Id': turnId }) },
       body: JSON.stringify(request),
       signal,
     });
