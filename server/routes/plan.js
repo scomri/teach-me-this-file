@@ -7,15 +7,15 @@ import { PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
 import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
 
 const SCRIPTS = ['hebrew', 'arabic', 'latin', 'other'];
-const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, rate_limited: 429, unreachable: 502, plan_invalid: 502 };
+const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, out_of_credit: 402, rate_limited: 429, unreachable: 502, plan_invalid: 502 };
 
 // Returns the checked request, or an error code.
 function validateRequest(body) {
-  const { preset, teacher, prompt = '', script = 'other', chunks } = body ?? {};
+  const { preset, teacher, prompt = '', script = 'other', chunks, wholeFile = false } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset)) return { code: 'invalid_request' };
   if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > MAX_MODEL_CHARS)) return { code: 'invalid_request' };
   if (typeof prompt !== 'string' || prompt.length > MAX_PROMPT_CHARS || !SCRIPTS.includes(script)) return { code: 'invalid_request' };
-  if (!Array.isArray(chunks) || !chunks.length) return { code: 'invalid_request' };
+  if (typeof wholeFile !== 'boolean' || !Array.isArray(chunks) || !chunks.length) return { code: 'invalid_request' };
   const ids = new Set();
   let chars = 0;
   for (const c of chunks) {
@@ -26,11 +26,11 @@ function validateRequest(body) {
     chars += c.text.length;
   }
   if (chars > MAX_DOC_CHARS) return { code: 'document_too_long' };
-  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, ids };
+  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, ids, wholeFile };
 }
 
-// POST /api/plan { preset, teacher?, prompt?, script?, chunks } with X-Api-Key.
-// Answers { plan, constraints } or { code }. A rejected plan gets one repair retry.
+// POST /api/plan { preset, teacher?, prompt?, script?, chunks, wholeFile? } with X-Api-Key.
+// Answers { plan, constraints, coverage, coverageNote } (plan is null when coverage is 'none') or { code }. A rejected plan gets one repair retry.
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
   router.post('/plan', async (req, res) => {
@@ -57,8 +57,11 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
         const content = (await response.json().catch(() => null))?.choices?.[0]?.message?.content;
         let reply;
         try { reply = JSON.parse(content); } catch { reply = null; }
-        const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids, { promptBlank: !request.prompt.trim() }) : { ok: false, errors: ['the reply was not a JSON object'] };
-        if (result.ok) return res.json({ plan: result.plan, constraints: result.constraints });
+        const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids, { promptBlank: !request.prompt.trim(), wholeFile: request.wholeFile }) : { ok: false, errors: ['the reply was not a JSON object'] };
+        if (result.ok) {
+          const { plan, constraints, coverage, coverageNote } = result;
+          return res.json({ plan, constraints, coverage, coverageNote });
+        }
         messages = repairMessages(messages, content, result.errors);
       }
       fail('plan_invalid');

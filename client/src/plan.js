@@ -1,5 +1,5 @@
 // Plan request and plan helpers. No React.
-import { MAX_DOC_CHARS, MINUTES_PER_STEP } from '../../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_STEPS, MINUTES_PER_STEP, stepsForMinutes } from '../../shared/limits.js';
 import { detectScript } from './ingest/script.js';
 
 export class PlanError extends Error {
@@ -9,9 +9,10 @@ export class PlanError extends Error {
   }
 }
 
-// Asks the server for a plan. Throws PlanError with the server's code, or
-// 'document_too_long' / 'unreachable' decided here.
-export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl = fetch) {
+// Asks the server for a plan: { plan, constraints, coverage, coverageNote }, with plan null when coverage
+// is 'none'. wholeFile asks for the document's main ideas without the prompt's topic. Throws PlanError
+// with the server's code, or 'document_too_long' / 'unreachable' decided here.
+export async function requestPlan({ doc, prompt, settings, wholeFile = false, signal }, fetchImpl = fetch) {
   if (doc.chunks.reduce((n, c) => n + c.text.length, 0) > MAX_DOC_CHARS) throw new PlanError('document_too_long');
   let response;
   try {
@@ -24,6 +25,7 @@ export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl =
         prompt,
         script: detectScript(doc.chunks.map((c) => c.text).join('\n')).script,
         chunks: doc.chunks.map(({ id, page, text }) => ({ id, page, text })),
+        ...(wholeFile && { wholeFile }),
       }),
       signal,
     });
@@ -39,7 +41,7 @@ export async function requestPlan({ doc, prompt, settings, signal }, fetchImpl =
     body = {};
   }
   if (!response.ok) throw new PlanError(body.code ?? (response.status === 413 ? 'document_too_long' : 'unreachable'));
-  if (!body.plan || !body.constraints) throw new PlanError('plan_invalid');
+  if (!body.constraints || (body.coverage !== 'none' && !body.plan)) throw new PlanError('plan_invalid');
   return body;
 }
 
@@ -57,3 +59,22 @@ export function sourcePages(step, doc) {
 }
 
 export const estimatedMinutes = (plan) => Math.round(plan.steps.length * MINUTES_PER_STEP);
+
+// Where the plan differs from what the teacher asked for, for the plan screen. The plan is never padded and
+// code applies the limits, so each note says which request was not followed, and why.
+export function requestNotes(plan, constraints) {
+  const { minutes, steps, outsideSources, maxSteps } = constraints;
+  const n = plan.steps.length;
+  const length = (count) => `${count} ${count === 1 ? 'step' : 'steps'} (~${Math.round(count * MINUTES_PER_STEP)} min)`;
+  const notes = [];
+  if (minutes != null) {
+    if (n < maxSteps && estimatedMinutes(plan) < minutes) {
+      notes.push(`This file supports ${length(n)}, shorter than the ${minutes} min requested`);
+    } else if (stepsForMinutes(minutes) > MAX_STEPS) {
+      notes.push(`${minutes} min requested, capped at ${length(MAX_STEPS)}`);
+    }
+  }
+  if (steps != null && steps > maxSteps) notes.push(`${steps} steps requested, capped at ${length(maxSteps)}`);
+  if (outsideSources) notes.push('Outside sources were requested. The lesson teaches only from the file.');
+  return notes;
+}

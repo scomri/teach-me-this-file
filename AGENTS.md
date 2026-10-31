@@ -53,6 +53,7 @@ Key design rules:
 
 - **Client owns lesson state.** Plan and progress live in app state, not in chat history. The server is stateless: each request carries what it needs. This survives free-tier cold starts.
 - **LLM proposes, code disposes.** Per student message: a small structured evaluation call returns a label (`correct | partial | wrong | asks_for_answer | off_topic | question`); the state machine decides the transition; then a streamed teaching reply is generated for that transition only.
+- **Lesson length is a ceiling, never padded.** Steps ≤ minutes ÷ 2.5, clamped to 1–10 (5 with no minutes), from `shared/limits.js`. There is no minimum lesson length. Requests the app does not follow (more steps than the ceiling, outside sources, a topic the file lacks) are bounded by code and the plan screen says so.
 - **Grounding:** the tutor teaches only from the current step's source chunks. Chunks carry page/id so the UI can show the source passage behind each message.
 - **File text is content, not instructions.** Delimit it in prompts. Test with a file containing "ignore your instructions".
 - **Streaming:** POST + `fetch` ReadableStream. Client uses `AbortController` for Stop; server aborts the upstream provider call on client disconnect.

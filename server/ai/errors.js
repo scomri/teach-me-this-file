@@ -9,6 +9,8 @@ export async function providerOutcome(response) {
   if (response.ok) return 'ok';
   if ([401, 403].includes(response.status)) return 'invalid_key';
   if (response.status === 404) return 'model_not_found';
+  // OpenRouter answers 402 when the key's credit cannot cover the output tokens a request reserves.
+  if (response.status === 402) return 'out_of_credit';
   if (response.status === 429) return 'rate_limited';
   if (response.status === 400) {
     const text = await response.text();

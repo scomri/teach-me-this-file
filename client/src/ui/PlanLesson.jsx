@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
 import { requestPlan } from '../plan.js';
-import PlanScreen from './PlanScreen.jsx';
+import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
 const MESSAGES = {
   model_not_found: "The teacher model wasn't found or isn't available for this key. Check the model settings.",
+  out_of_credit: "The provider says this key doesn't have enough credit for a plan. Add credit to the key or use another key.",
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   plan_invalid: "The model didn't return a usable plan. Try again, or change the request.",
@@ -21,38 +22,40 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
   const latest = useRef({});
   latest.current = { doc, settings, prompt };
 
-  async function runPlan() {
+  // wholeFile: plan the document without the prompt's topic (after a request the file does not cover).
+  // prompt: the text to send in place of the current one, to repeat an earlier request.
+  async function runPlan({ wholeFile = false, prompt: earlier } = {}) {
     controller.current?.abort();
     const ac = new AbortController();
     controller.current = ac;
-    const sent = latest.current;
-    setState((s) => ({ status: 'planning', plan: s.plan, constraints: s.constraints }));
+    const sent = { ...latest.current, wholeFile, ...(earlier !== undefined && { prompt: earlier }) };
+    setState((s) => ({ ...s, status: 'planning' }));
     try {
-      const { plan, constraints } = await requestPlan({ ...sent, signal: ac.signal });
-      setState({ status: 'done', plan, constraints });
+      const { plan, constraints, coverage, coverageNote } = await requestPlan({ ...sent, signal: ac.signal });
+      setState({ status: 'done', plan, constraints, coverage, coverageNote, wholeFile, prompt: sent.prompt });
     } catch (error) {
       if (ac.signal.aborted) return;
       if (error.code === 'invalid_key') {
         // The key changed while the request was in flight: the rejection is about the old one.
-        if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan();
-        return setState({ status: 'key_rejected' }); // a plan made with the old key is dropped
+        if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan({ wholeFile, prompt: sent.prompt });
+        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt }); // a plan made with the old key is dropped
       }
-      setState((s) => ({ status: 'error', code: error.code, plan: s.plan, constraints: s.constraints }));
+      setState((s) => ({ ...s, status: 'error', code: error.code }));
     }
   }
 
   function cancel() {
     controller.current?.abort();
-    setState((s) => ({ status: s.plan ? 'done' : 'idle', plan: s.plan, constraints: s.constraints }));
+    setState((s) => ({ ...s, status: s.coverage ? 'done' : 'idle' }));
   }
 
   useEffect(() => () => controller.current?.abort(), []);
 
   useEffect(() => {
-    if (saveCount && state.status === 'key_rejected') runPlan();
+    if (saveCount && state.status === 'key_rejected') runPlan({ wholeFile: state.wholeFile, prompt: state.prompt });
   }, [saveCount]);
 
-  const { status, plan } = state;
+  const { status, plan, coverage } = state;
   const planning = status === 'planning';
   const noKey = !settings.apiKey.trim();
 
@@ -69,7 +72,7 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
         placeholder="For example: teach the main ideas in 15 minutes, in English, for 10th graders"
       />
       <div className="mt-2 flex items-center gap-2">
-        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={runPlan} disabled={planning || noKey}>
+        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={() => runPlan()} disabled={planning || noKey}>
           {planning ? 'Planning…' : 'Plan'}
         </button>
         {planning && <button className="rounded border border-slate-300 px-3 py-1" onClick={cancel}>Cancel</button>}
@@ -91,7 +94,15 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
         )}
       </div>
 
-      {plan && <PlanScreen plan={plan} constraints={state.constraints} doc={doc} busy={planning} onRegenerate={runPlan} />}
+      {coverage === 'none' && (
+        <NoCoverage coverageNote={state.coverageNote} busy={planning} onPlanWholeFile={() => runPlan({ wholeFile: true, prompt: state.prompt })} />
+      )}
+      {plan && (
+        <PlanScreen
+          result={state} doc={doc} busy={planning}
+          onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
+        />
+      )}
     </section>
   );
 }

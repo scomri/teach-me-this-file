@@ -29,7 +29,9 @@ export function checkRouter(fetchImpl, timeoutMs = 10000) {
           if (controller.signal.aborted) throw error;
         }
         if (code === 'invalid_key' || code === 'model_not_found') return res.json({ code, ...(code === 'model_not_found' ? {role} : {}) });
-        if (code === 'unreachable' || (code === 'rate_limited' && warning === 'ok')) warning = code;
+        // A key with no credit cannot be verified here; it is reported as the connection not being verified.
+        if (code === 'unreachable' || code === 'out_of_credit') warning = 'unreachable';
+        else if (code === 'rate_limited' && warning === 'ok') warning = code;
       }
       res.json({code:warning});
     } catch {
