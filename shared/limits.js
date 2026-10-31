@@ -1,7 +1,7 @@
 // Limits shared by the client and the server.
 
-// Characters of document text sent in one plan request (default; presets with small
-// free tiers use less). Larger documents are planned from an outline instead.
+// Maximum characters of document text sent in one plan request. Preset planning
+// budgets may select an outline sooner.
 // The whole document is always kept on the client.
 export const MAX_DOC_CHARS = 100_000;
 

@@ -15,7 +15,7 @@ test('the token estimate uses the ratio of the detected script', () => {
   assert.equal(estimateTokens(1000, 'other'), 850);
 });
 
-test('every preset has a positive budget below its tokens per minute', () => {
+test('every preset has a positive budget below its planning setting', () => {
   for (const [name, preset] of Object.entries(PRESETS)) {
     assert.ok(planBudget(name) > 0 && planBudget(name) < preset.tpm, name);
   }
