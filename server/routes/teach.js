@@ -96,14 +96,14 @@ async function readDeltas(body, onText) {
 }
 
 const fallbacks = {
-  en: { general: 'Take another look at the material and try this question:', answer_question: 'I could not answer that question. Please return to the check question:' },
-  he: { general: 'כדאי לעיין שוב בחומר ולנסות לענות על השאלה:', answer_question: 'לא הצלחתי לענות על השאלה שלך. נחזור לשאלת הבדיקה:' },
-  ar: { general: 'راجع المادة مرة أخرى وحاول الإجابة عن السؤال:', answer_question: 'لم أتمكن من الإجابة عن سؤالك. لنعد إلى سؤال التحقق:' },
+  en: { general: 'Take another look at the material and try this question:', advance: 'That is correct. Let’s move to the next question:', redirect: 'If you are distressed, please speak to a trusted adult. Let’s return to the material:', answer_question: 'I could not answer that question. Please return to the check question:' },
+  he: { general: 'כדאי לעיין שוב בחומר ולנסות לענות על השאלה:', advance: 'נכון. נעבור לשאלה הבאה:', redirect: 'אם קשה לך, כדאי לדבר עם מבוגר שאפשר לסמוך עליו. נחזור לחומר:', answer_question: 'לא הצלחתי לענות על השאלה שלך. נחזור לשאלת הבדיקה:' },
+  ar: { general: 'راجع المادة مرة أخرى وحاول الإجابة عن السؤال:', advance: 'إجابتك صحيحة. لننتقل إلى السؤال التالي:', redirect: 'إذا كنت تشعر بالضيق، فتحدث إلى شخص بالغ تثق به. لنعد إلى المادة:', answer_question: 'لم أتمكن من الإجابة عن سؤالك. لنعد إلى سؤال التحقق:' },
 };
 function fallback({ transition, lesson, step, questionValidated }) {
   const language = (lesson.language ?? lesson.documentLanguage ?? '').trim().toLowerCase();
   const key = /^(he|iw)(-|$)|^(hebrew(?: \([^()]+\))?|עברית)$/.test(language) ? 'he' : /^(ar)(-|$)|^(arabic(?: \([^()]+\))?|العربية|عربي)$/.test(language) ? 'ar' : 'en';
-  return `${fallbacks[key][transition === 'answer_question' ? 'answer_question' : 'general']}${questionValidated ? `\n${step.checkQuestion}` : ''}`;
+  return `${fallbacks[key][transition] ?? fallbacks[key].general}${questionValidated ? `\n${step.checkQuestion}` : ''}`;
 }
 
 // POST /api/teach { preset, teacher?, transition, lesson: { language, audience, style, documentLanguage },

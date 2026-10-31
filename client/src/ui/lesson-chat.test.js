@@ -98,6 +98,31 @@ async function mount(steps) {
   return { container, teach, evaluate, cancelled, button, click, feed, type, composer, render, openedSettings: () => openedSettings, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
 }
 
+test('a restored in-progress lesson can check its old questions and regenerate a usable fallback', async () => {
+  const started = [ { type: 'fileRead', source: doc }, received, { type: 'lessonStarted' }, { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] }, { type: 'teachDone' } ].reduce(reduce, initialLesson());
+  const initial = { ...started, plan: { ...started.plan, validated: false } };
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/plan/check') return Response.json({ flagged: [] });
+    if (url === '/api/teach') { sent = JSON.parse(init.body); return new Response('event: done\ndata: {}\n\n'); }
+    throw new Error(`unexpected request ${url}`);
+  };
+  function Restored() {
+    const [lesson, dispatch] = React.useReducer(reduce, initial);
+    return React.createElement(Lesson, { lesson, dispatch, settings, saveCount: 0, openSettings() {} });
+  }
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(React.createElement(Restored)));
+  const click = async (label) => act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent.trim() === label).click(); await new Promise(r => setTimeout(r, 0)); });
+  assert.match(container.textContent, /unchecked questions/);
+  await click('Check questions');
+  assert.doesNotMatch(container.textContent, /unchecked questions/);
+  await click('Regenerate');
+  assert.equal(sent.questionValidated, true);
+  await act(() => root.unmount());
+});
+
 test('Start is enabled on a plan and sends an opening request built from the step, with the key in a header', async () => {
   const ui = await mount();
   assert.equal(ui.button('Start').disabled, false);
