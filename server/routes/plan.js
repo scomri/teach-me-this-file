@@ -11,7 +11,7 @@ const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, d
 
 const invalid = { code: 'invalid_request' };
 // Ids and pages go into prompt attributes, so they are checked, not escaped.
-const isId = (id) => typeof id === 'string' && /^[\w-]{1,20}$/.test(id);
+export const isId = (id) => typeof id === 'string' && /^[\w-]{1,20}$/.test(id);
 
 // Returns the checked request, or an error code. The document is either `chunks` (the full text) or
 // an `outline` of it with `chunkIds`, the id of every chunk, in document order.

@@ -28,6 +28,10 @@ export const DEFAULT_STEPS = 5;
 // Steps a lesson of this many minutes asks for, before the MIN_STEPS to MAX_STEPS clamp.
 export const stepsForMinutes = (minutes) => Math.round(minutes / MINUTES_PER_STEP);
 
+// Largest model output of one tutor reply, in tokens. About 120 words; the rest is headroom for
+// models that count reasoning tokens against the same cap.
+export const TEACH_OUTPUT_TOKENS = 2048;
+
 // Longest model name a settings field or request may carry, in characters.
 export const MAX_MODEL_CHARS = 200;
 

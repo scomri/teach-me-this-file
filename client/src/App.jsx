@@ -2,6 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { initialLesson, reduce } from './lesson/lesson.js';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
+import Lesson from './ui/Lesson.jsx';
 import PlanLesson from './ui/PlanLesson.jsx';
 
 export default function App() {
@@ -104,7 +105,8 @@ export default function App() {
       <p className="mt-2 text-slate-600">API: {api}</p>
 
       <FileIngest onDoc={(source) => dispatch({ type: 'fileRead', source })} />
-      {lesson.source && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
+      {lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} openSettings={() => settingsRef.current.open()} />}
+      {lesson.source && settings && !lesson.progress && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"

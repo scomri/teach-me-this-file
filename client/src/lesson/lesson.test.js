@@ -114,3 +114,89 @@ test('an unknown event leaves the state as it is', () => {
   const s = reduce(initialLesson(), { type: 'fileRead', source: doc });
   assert.equal(reduce(s, { type: 'nope' }), s);
 });
+
+// Teaching: start, then one streamed tutor reply at a time.
+const two = { ...plan, steps: [plan.steps[0], { ...plan.steps[0], id: 's2', title: 'Two' }] };
+const planned = (p = plan) => reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { ...received, plan: p });
+const begin = { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] };
+
+test('lessonStarted opens step 1 and leaves the other steps pending', () => {
+  const s = reduce(planned(two), { type: 'lessonStarted' });
+  assert.deepEqual(s.progress, {
+    current: 's1',
+    steps: {
+      s1: { status: 'active', pointsMet: [], fails: 0, asks: 0 },
+      s2: { status: 'pending', pointsMet: [], fails: 0, asks: 0 },
+    },
+  });
+  assert.deepEqual(s.messages, []);
+});
+
+test('lessonStarted without a plan, or twice, changes nothing', () => {
+  const bare = reduce(initialLesson(), { type: 'fileRead', source: doc });
+  assert.equal(reduce(bare, { type: 'lessonStarted' }), bare);
+  const started = reduce(planned(), { type: 'lessonStarted' });
+  assert.equal(reduce(started, { type: 'lessonStarted' }), started);
+});
+
+test('teachStarted adds an empty streaming tutor message; chunks append to it', () => {
+  let s = reduce(reduce(planned(), { type: 'lessonStarted' }), begin);
+  assert.deepEqual(s.messages, [{ role: 'tutor', stepId: 's1', text: '', transition: 'opening', chunkIds: ['c1'], status: 'streaming' }]);
+  s = reduce(reduce(s, { type: 'teachChunk', text: 'Plants ' }), { type: 'teachChunk', text: 'eat light.' });
+  assert.equal(s.messages[0].text, 'Plants eat light.');
+  assert.equal(s.messages[0].status, 'streaming');
+});
+
+test('teachStarted before the lesson started changes nothing', () => {
+  const s = planned();
+  assert.equal(reduce(s, begin), s);
+});
+
+test('teachDone, teachStopped and teachFailed set the status and keep the text', () => {
+  const streaming = reduce(reduce(reduce(planned(), { type: 'lessonStarted' }), begin), { type: 'teachChunk', text: 'Plants' });
+  for (const [type, status] of [['teachDone', 'done'], ['teachStopped', 'stopped'], ['teachFailed', 'failed']]) {
+    const s = reduce(streaming, { type });
+    assert.equal(s.messages[0].status, status);
+    assert.equal(s.messages[0].text, 'Plants');
+    assert.deepEqual(s.progress, streaming.progress);
+  }
+});
+
+test('a late chunk or status after the reply settled changes nothing', () => {
+  const stopped = reduce(reduce(reduce(planned(), { type: 'lessonStarted' }), begin), { type: 'teachStopped' });
+  assert.equal(reduce(stopped, { type: 'teachChunk', text: 'more' }), stopped);
+  assert.equal(reduce(stopped, { type: 'teachDone' }), stopped);
+  assert.equal(reduce(stopped, { type: 'teachFailed' }), stopped);
+});
+
+test('regenerate replaces the last reply with an empty streaming one of the same transition, progress untouched', () => {
+  const done = reduce(reduce(reduce(reduce(planned(), { type: 'lessonStarted' }), begin), { type: 'teachChunk', text: 'Plants' }), { type: 'teachDone' });
+  const s = reduce(done, { type: 'regenerate' });
+  assert.deepEqual(s.messages, [{ role: 'tutor', stepId: 's1', text: '', transition: 'opening', chunkIds: ['c1'], status: 'streaming' }]);
+  assert.deepEqual(s.progress, done.progress);
+});
+
+test('regenerate works from a failed or stopped reply, and not while one streams', () => {
+  const streaming = reduce(reduce(planned(), { type: 'lessonStarted' }), begin);
+  assert.equal(reduce(streaming, { type: 'regenerate' }), streaming);
+  for (const type of ['teachFailed', 'teachStopped']) {
+    const s = reduce(reduce(streaming, { type }), { type: 'regenerate' });
+    assert.equal(s.messages.length, 1);
+    assert.equal(s.messages[0].status, 'streaming');
+  }
+});
+
+test('regenerate with no reply to replace changes nothing', () => {
+  const s = reduce(planned(), { type: 'lessonStarted' });
+  assert.equal(reduce(s, { type: 'regenerate' }), s);
+});
+
+test('a new plan, a new file and New lesson drop progress and messages', () => {
+  const taught = reduce(reduce(planned(), { type: 'lessonStarted' }), begin);
+  for (const event of [received, { type: 'fileRead', source: doc }, { type: 'planCleared' }]) {
+    const s = reduce(taught, event);
+    assert.equal(s.progress, null);
+    assert.deepEqual(s.messages, []);
+  }
+  assert.deepEqual(reduce(taught, { type: 'newLesson' }), initialLesson());
+});

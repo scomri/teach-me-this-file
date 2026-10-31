@@ -1,0 +1,84 @@
+// Teach request: one streamed tutor reply. No React.
+export class TeachError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
+// The request the server builds the prompt from: the transition, the lesson's stated constraints and the
+// current step with its chunks. Never prompt text, never the key points of an opening.
+// stepId: the step the reply belongs to (a repeated reply keeps its own step); default the current one.
+export function teachRequest({ lesson, transition, settings, stepId = lesson.progress.current }) {
+  const { plan, source, teacher } = lesson;
+  const i = plan.steps.findIndex((s) => s.id === stepId);
+  const step = plan.steps[i];
+  const byId = new Map(source.chunks.map((c) => [c.id, c]));
+  return {
+    preset: settings.preset,
+    teacher: settings.teacher,
+    transition,
+    lesson: { ...teacher.constraints, documentLanguage: source.language },
+    step: { index: i + 1, total: plan.steps.length, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
+    chunks: step.chunkIds.map((id) => byId.get(id)).filter(Boolean).map(({ id, page, text }) => ({ id, page, text })),
+  };
+}
+
+// Streams one reply: onStart(id) when the server names the stream, onText(text) per chunk. Resolves when
+// the reply is done. Throws TeachError with the server's code, 'unreachable' for a network failure, or the
+// AbortError when `signal` aborted.
+export async function streamTeach({ request, apiKey, signal, onStart, onText }, fetchImpl = fetch) {
+  let response;
+  try {
+    response = await fetchImpl('/api/teach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      body: JSON.stringify(request),
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new TeachError('unreachable');
+  }
+  if (!response.ok) {
+    const body = await response.json().catch((error) => { if (signal?.aborted) throw error; return {}; });
+    throw new TeachError(body.code ?? 'unreachable');
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) throw new TeachError('unreachable'); // closed without done: a dropped connection
+      buffer += decoder.decode(value, { stream: true });
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop();
+      for (const block of blocks) {
+        if (signal?.aborted) throw new DOMException('aborted', 'AbortError'); // text after Stop is dropped
+        let name = 'message';
+        let data = '';
+        for (const line of block.split('\n')) {
+          if (line.startsWith('event: ')) name = line.slice(7);
+          else if (line.startsWith('data: ')) data = line.slice(6);
+        }
+        const payload = data ? JSON.parse(data) : {};
+        if (name === 'start') onStart?.(payload.id);
+        else if (name === 'error') throw new TeachError(payload.error ?? 'unreachable');
+        else if (name === 'done') return;
+        else if (typeof payload.text === 'string') onText(payload.text);
+      }
+    }
+  } catch (error) {
+    if (error instanceof TeachError || signal?.aborted) throw error;
+    throw new TeachError('unreachable'); // a read that failed mid-body
+  } finally {
+    reader.cancel().catch(() => {});
+  }
+}
+
+// Asks the server to end a stream and abort its provider call. Behind a proxy, closing the fetch may never
+// reach the server, so Stop sends this first. Failure is ignored: the abort that follows still stops the client.
+export function cancelStream(id, fetchImpl = fetch) {
+  return fetchImpl(`/api/streams/${id}/cancel`, { method: 'POST', keepalive: true }).catch(() => {});
+}

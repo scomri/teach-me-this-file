@@ -6,6 +6,8 @@ import { errorHandler, requestLogger } from './logger.js';
 import { checkRouter } from './routes/check.js';
 import { echoRouter } from './routes/echo.js';
 import { planRouter } from './routes/plan.js';
+import { teachRouter } from './routes/teach.js';
+import { cancelRouter } from './streams.js';
 
 const dist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client/dist');
 
@@ -22,6 +24,8 @@ export function createApp({ log = console.log, streamMaxMs, providerFetch, check
   app.use('/api', checkRouter(providerFetch, checkTimeoutMs));
   app.use('/api', planRouter(providerFetch, planTimeoutMs));
   app.use('/api', echoRouter(log, streams, streamMaxMs));
+  app.use('/api', teachRouter(providerFetch, log, streams, streamMaxMs));
+  app.use('/api', cancelRouter(streams));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
   // Production: serve the built client; unknown paths fall back to the SPA shell.
