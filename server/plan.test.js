@@ -72,6 +72,13 @@ test('constraint defaults are filled by code', () => {
   assert.equal(c({ language: '  ' }).language, 'French');
   assert.equal(c({ audience: '10th graders' }).audience, '10th graders');
 
+  // Language codes become names; names and unknown text pass through.
+  assert.equal(c({ language: 'en' }).language, 'English');
+  assert.equal(c({}, { promptLanguage: 'he' }).language, 'Hebrew');
+  assert.equal(c({}, { promptLanguage: 'pt-BR' }).language, 'Brazilian Portuguese');
+  assert.equal(c({ language: 'Hebrew' }).language, 'Hebrew');
+  assert.equal(c({ language: 'English (UK)' }).language, 'English (UK)');
+
   assert.equal(c({}).maxSteps, 5);
   assert.equal(c({ minutes: 0 }).maxSteps, 5);
   assert.equal(c({ minutes: -4 }).maxSteps, 5);

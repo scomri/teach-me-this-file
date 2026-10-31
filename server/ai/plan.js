@@ -33,6 +33,14 @@ export const PLAN_RESPONSE_FORMAT = {
 
 const trimConstraint = (v) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_CONSTRAINT_CHARS) : null);
 
+// Some models answer with a language code ("en", "pt-BR"). Show the name; anything else passes through.
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+function languageName(v) {
+  const s = trimConstraint(v);
+  if (!s || !/^[a-z]{2,3}(-[a-z]{2,4})?$/i.test(s)) return s;
+  try { return languageNames.of(s); } catch { return s; }
+}
+
 // Constraints as the teacher stated them, with defaults filled by code. With a blank prompt the
 // teacher stated nothing: the model's constraints are ignored (the document cannot set them) and the
 // prompt language is the placeholder's, not the teacher's.
@@ -41,7 +49,7 @@ export function resolveConstraints(reply, { promptBlank = false } = {}) {
   const minutes = typeof c.minutes === 'number' && Number.isFinite(c.minutes) && c.minutes > 0 ? c.minutes : null;
   const maxSteps = minutes == null ? DEFAULT_STEPS : Math.min(MAX_STEPS, Math.max(MIN_STEPS, Math.round(minutes / MINUTES_PER_STEP)));
   return {
-    language: trimConstraint(c.language) ?? (promptBlank ? null : trimConstraint(reply?.promptLanguage)) ?? trimConstraint(reply?.documentLanguage),
+    language: languageName(c.language) ?? (promptBlank ? null : languageName(reply?.promptLanguage)) ?? languageName(reply?.documentLanguage),
     audience: trimConstraint(c.audience),
     style: trimConstraint(c.style),
     minutes,
