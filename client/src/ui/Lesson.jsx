@@ -44,16 +44,18 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
     }
   }
 
-  // Tell the server first: behind a proxy, closing our fetch may never reach it.
+  // Tell the server first: behind a proxy, closing our fetch may never reach it. The fetch is closed
+  // after the cancel is answered, so the server never sees the disconnect first and refuses the cancel.
   function halt(run) {
-    cancelStream(run.id);
-    run.ac.abort();
+    cancelStream(run.id).finally(() => run.ac.abort());
   }
 
   function stop() {
     const run = current.current;
     if (!run) return;
     run.stopped = true;
+    current.current = null; // later chunks are dropped; the reply settles now, not when the cancel returns
+    dispatch({ type: 'teachStopped' });
     if (run.id) halt(run); // else onStart halts it when the stream is named
   }
 
