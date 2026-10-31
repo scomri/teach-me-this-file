@@ -1,4 +1,4 @@
-// tpm: input tokens per minute a new key can send the teacher model (the free or entry tier). A plan
+// tpm: a conservative input-tokens-per-minute setting for a new key on the teacher model, not a published limit. A plan
 // request must fit under it, so it sets how much of a document is sent whole (client/src/outline.js).
 export const PRESETS = {
   gemini: { name: 'Gemini', evaluator: 'gemini-3.5-flash-lite', teacher: 'gemini-3.8-flash', tpm: 250_000, keyUrl: 'https://aistudio.google.com/apikey' },
