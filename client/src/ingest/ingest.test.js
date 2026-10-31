@@ -55,3 +55,13 @@ test('legacy formats are told to save as a supported type', async () => {
 test('formats without pages report no page count', async () => {
   assert.equal((await ingestFile(file('hello world', 'a.txt'))).totalPages, null);
 });
+
+test('rejects malformed UTF-16 with a clear ingestion error', async () => {
+  for (const bytes of [
+    [0xff, 0xfe, 0x41], [0xfe, 0xff, 0x41],
+    [0xff, 0xfe, 0x00, 0xd8], [0xfe, 0xff, 0xd8, 0x00],
+  ]) {
+    await assert.rejects(ingestFile(file(Uint8Array.from(bytes), 'broken.txt')),
+      (err) => err instanceof IngestError && err.code === 'unreadable' && /encoding/i.test(err.message));
+  }
+});

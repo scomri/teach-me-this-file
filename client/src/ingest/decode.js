@@ -1,9 +1,16 @@
+import { IngestError } from './errors.js';
+
 // Bytes of a text file to a string. UTF-8 and UTF-16 first; otherwise guess the
 // legacy Windows code page from byte ranges (Latin, Hebrew or Arabic).
 
 export function decodeText(bytes) {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(bytes);
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(bytes);
+  if ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff)) {
+    try {
+      return new TextDecoder(bytes[0] === 0xff ? 'utf-16le' : 'utf-16be', { fatal: true }).decode(bytes);
+    } catch {
+      throw new IngestError('unreadable', 'This file has invalid UTF-16 encoding. Save it as UTF-8 and try again.');
+    }
+  }
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   } catch {
