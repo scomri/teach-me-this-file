@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TUTOR_CHARS, TEACH_OUTPUT_TOKENS, TURN_RATE_LIMIT_RETRIES } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
+import { protectsUnansweredPoints } from '../../shared/transitions.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { checkDisclosure } from '../ai/disclosure.js';
 import { CAPS, MAX_POINTS } from '../ai/plan.js';
@@ -34,7 +35,7 @@ function validateRequest(body) {
   if (!step || !Number.isInteger(step.index) || !Number.isInteger(step.total) || step.index < 1 || step.index > step.total || step.total > MAX_STEPS) return null;
   if (![step.title, step.objective, step.checkQuestion].every((v) => text(v, MAX_FIELD_CHARS))) return null;
   if (!validChunks(chunks)) return null;
-  const protectedReply = !['reveal', 'recap'].includes(transition);
+  const protectedReply = protectsUnansweredPoints(transition);
   if (typeof questionValidated !== 'boolean') return null;
   if (protectedReply && (!textList(protectedPoints, CAPS.point, MAX_POINTS) || !protectedPoints.length || protectedPoints.some((p) => !p.trim()))) return null;
   // After an answer the request carries that step's key points; an opening never does.
@@ -65,11 +66,14 @@ async function readDeltas(body, onText) {
   let complete = false;
   let incomplete = false;
   const line = (raw) => {
+    if (/^event:\s*error\s*$/.test(raw)) { incomplete = true; return; }
     if (!raw.startsWith('data:')) return;
     const data = raw.slice(5).trim();
     if (data === '[DONE]') { complete = true; return; }
-    let choice;
-    try { choice = JSON.parse(data).choices?.[0]; } catch { return; }
+    let payload;
+    try { payload = JSON.parse(data); } catch { return; }
+    if (payload?.error) { incomplete = true; return; }
+    const choice = payload?.choices?.[0];
     if (choice?.finish_reason === 'stop') complete = true;
     else if (choice?.finish_reason != null) incomplete = true;
     const delta = choice?.delta?.content;
@@ -98,7 +102,7 @@ const fallbacks = {
 };
 function fallback({ transition, lesson, step, questionValidated }) {
   const language = (lesson.language ?? lesson.documentLanguage ?? '').trim().toLowerCase();
-  const key = /^(he|iw)(-|$)|^(hebrew|עברית)$/.test(language) ? 'he' : /^(ar)(-|$)|^(arabic|العربية|عربي)$/.test(language) ? 'ar' : 'en';
+  const key = /^(he|iw)(-|$)|^(hebrew(?: \([^()]+\))?|עברית)$/.test(language) ? 'he' : /^(ar)(-|$)|^(arabic(?: \([^()]+\))?|العربية|عربي)$/.test(language) ? 'ar' : 'en';
   return `${fallbacks[key][transition === 'answer_question' ? 'answer_question' : 'general']}${questionValidated ? `\n${step.checkQuestion}` : ''}`;
 }
 
@@ -135,7 +139,7 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       }
       if (code !== 'ok') return stream.end(code);
       if (!response.body) return stream.end('unreachable');
-      const protectedReply = !['reveal', 'recap'].includes(request.transition);
+      const protectedReply = protectsUnansweredPoints(request.transition);
       let draft = '';
       const { any, complete } = await readDeltas(response.body, (t) => {
         if (protectedReply) { draft += t; if (draft.length > 20000) throw new Error('draft too long'); }

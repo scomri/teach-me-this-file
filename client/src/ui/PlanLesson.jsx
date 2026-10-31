@@ -49,7 +49,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         // The key changed while the request was in flight: the rejection is about the old one.
         if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan({ wholeFile, prompt: sent.prompt });
         dispatch({ type: 'planCleared' }); // a plan made with the old key is dropped
-        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt });
+        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt, flagged: error.flagged });
       }
       setState((s) => ({ ...s, status: 'error', code: error.code, flagged: error.flagged }));
     }

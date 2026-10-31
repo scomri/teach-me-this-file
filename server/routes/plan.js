@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_STEPS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { checkDisclosure } from '../ai/disclosure.js';
@@ -77,7 +77,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     const { preset, evaluator, steps } = req.body ?? {};
     const invalidCheck = () => res.status(400).json({ code: 'invalid_request' });
     if (!Object.hasOwn(PRESETS, preset) || (evaluator !== undefined && (typeof evaluator !== 'string' || evaluator.length > MAX_MODEL_CHARS))) return invalidCheck();
-    if (!Array.isArray(steps) || !steps.length || steps.length > 10) return invalidCheck();
+    if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) return invalidCheck();
     for (const s of steps) {
       if (typeof s?.checkQuestion !== 'string' || !s.checkQuestion.trim() || s.checkQuestion.length > CAPS.question) return invalidCheck();
       if (!Array.isArray(s.expected) || !s.expected.length || s.expected.length > MAX_POINTS || s.expected.some((p) => typeof p !== 'string' || !p.trim() || p.length > CAPS.point)) return invalidCheck();
@@ -97,7 +97,8 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
   });
   router.post('/plan', async (req, res) => {
     const request = validateRequest(req.body);
-    const fail = (code) => res.status(STATUS[code]).json({ code });
+    let lastFlagged = [];
+    const fail = (code) => res.status(STATUS[code]).json({ code, ...(lastFlagged.length && { flagged: lastFlagged }) });
     if (request.code) return fail(request.code);
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return fail('invalid_key');
@@ -108,7 +109,6 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     res.on('close', disconnect);
     try {
       let messages = buildPlanMessages(request);
-      let lastFlagged = [];
       for (let attempt = 0; attempt < 2; attempt++) {
         const response = await chatCompletion({
           preset: request.preset, apiKey, model: request.model, messages,
