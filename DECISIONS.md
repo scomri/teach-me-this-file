@@ -54,6 +54,10 @@ On 2026-10-31, small requests also checked the configured teacher models' accoun
 
 The built app was also run locally on one port. In the browser, a 22-page, 105,988-character PDF was ingested as 80 chunks; a Gemini plan request returned five steps with source pages, including page 20. This checks the local outline flow, not the deployed URL.
 
+On 2026-10-31 the deployed URL was checked after the outline change shipped. With Gemini, a long English PDF (over 100,000 characters) returned a five-step plan of about 13 minutes and a long Hebrew PDF (170 pages) a four-step plan of about 10 minutes, both taught in English. Without a key, a 600 KB body returned the fixed `request_too_large` error and one chunk of 100,001 characters returned `document_too_long`, both 413 and neither echoing the request.
+
+**Not covered:** each case ran once, so output variance is not measured; the other three presets were measured only through local calls, not in the deployed app; and the wording the page shows for a 413 is covered by the client tests, not checked in the browser. Repeat runs and the other presets belong with the scenario harness.
+
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.
