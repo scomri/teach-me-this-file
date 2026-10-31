@@ -67,7 +67,7 @@ test('without headings the outline has one entry per page, and without pages eve
 
 test('entries are shortened until the outline fits the budget, and always cover the whole document', () => {
   const doc = many(900, (i) => ({ page: i + 1, heading: `Heading number ${i + 1}`, text: 'z'.repeat(400) }));
-  const cost = (entries) => estimateTokens(entries.reduce((n, e) => n + 40 + e.heading.length + e.text.length, 0), 'hebrew');
+  const cost = (entries) => estimateTokens(entries.reduce((n, e) => n + 80 + e.heading.length + e.text.length, 0), 'hebrew');
   const full = buildOutline(doc, 'hebrew', 10_000_000);
   assert.equal(full.length, 900);
   for (const budget of [20_000, 2_000, 300]) {
@@ -76,6 +76,18 @@ test('entries are shortened until the outline fits the budget, and always cover 
     assert.equal(out[0].first, 'c1');
     assert.equal(out.at(-1).last, 'c900');
     out.slice(1).forEach((e, i) => assert.equal(Number(e.first.slice(1)), Number(out[i].last.slice(1)) + 1)); // no gaps, no overlaps
+  }
+});
+
+test('an outline also stays within the route character cap, for headings, pages and groups', () => {
+  const heads = many(2000, (i) => ({ page: i + 1, heading: 'H'.repeat(90) + i, text: 'z'.repeat(400) }));
+  const pages = many(4000, (i) => ({ page: i + 1, text: 'z'.repeat(400) }));
+  const groups = many(20_000, { text: 'z'.repeat(400) });
+  for (const doc of [heads, pages, groups]) {
+    const out = buildOutline(doc, 'latin', 10_000_000);
+    assert.ok(out.reduce((n, e) => n + e.heading.length + e.text.length, 0) <= MAX_DOC_CHARS);
+    assert.equal(out[0].first, 'c1');
+    assert.equal(out.at(-1).last, doc.at(-1).id);
   }
 });
 

@@ -4,7 +4,7 @@ import { MAX_POINTS } from '../plan.js';
 
 const MAX_REPLY_ECHO = 20_000; // longest rejected reply sent back in the repair message
 
-// File text can never close the fence: these four tags (any case) lose their `<`.
+// File text can never close the fence: these tags, opening and closing (any case), lose their `<`.
 const FENCE_TAGS = /<(\/?)(chunk|outline_entry|source_document)/gi;
 export const neutralize = (text) => text.replace(FENCE_TAGS, '&lt;$1$2');
 

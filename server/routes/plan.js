@@ -53,7 +53,7 @@ function validateRequest(body) {
   return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, outline, ids };
 }
 
-// POST /api/plan { preset, teacher?, prompt?, script?, chunks } with X-Api-Key.
+// POST /api/plan { preset, teacher?, prompt?, script?, chunks | outline + chunkIds } with X-Api-Key.
 // Answers { plan, constraints } or { code }. A rejected plan gets one repair retry.
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
