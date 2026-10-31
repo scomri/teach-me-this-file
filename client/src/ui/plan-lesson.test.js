@@ -16,9 +16,12 @@ globalThis.HTMLElement = window.HTMLElement;
 const vite = await createServer({ configFile: false, root: fileURLToPath(new URL('../..', import.meta.url)), plugins: [react()], appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' });
 const { default: PlanLesson } = await vite.ssrLoadModule('/src/ui/PlanLesson.jsx');
 test.after(() => vite.close());
-// The lesson state lives above PlanLesson, as in App.
-function Host(props) {
-  const [lesson, dispatch] = React.useReducer(reduce, undefined, initialLesson);
+// The lesson state lives above PlanLesson, as in App: the file is read and the prompt typed into it.
+let typePrompt; // the mounted host's way to change the prompt, as typing does
+function Host({ prompt, ...props }) {
+  const [lesson, dispatch] = React.useReducer(reduce, prompt, (p) =>
+    [{ type: 'fileRead', source: doc }, { type: 'promptChanged', prompt: p }].reduce(reduce, initialLesson()));
+  typePrompt = (p) => dispatch({ type: 'promptChanged', prompt: p });
   return React.createElement(PlanLesson, { ...props, lesson, dispatch });
 }
 
@@ -35,7 +38,12 @@ async function mount(replies, { prompt = 'teach it' } = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  const render = (p, saveCount = 0) => act(async () => root.render(React.createElement(Host, { doc, settings, saveCount, prompt: p, setPrompt() {}, openSettings() {} })));
+  let mounted = false;
+  const render = (p, saveCount = 0) => act(async () => {
+    if (mounted) typePrompt(p);
+    root.render(React.createElement(Host, { settings, saveCount, prompt: p, openSettings() {} }));
+    mounted = true;
+  });
   await render(prompt);
   const button = (label) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
   const click = (label) => act(async () => { button(label).dispatchEvent(new window.Event('click', { bubbles: true })); await new Promise((r) => setTimeout(r, 0)); });

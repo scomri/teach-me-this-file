@@ -98,7 +98,7 @@ export default function App() {
       <p className="mt-2 text-slate-600">API: {api}</p>
 
       <FileIngest onDoc={(source) => dispatch({ type: 'fileRead', source })} />
-      {lesson.source && settings && <PlanLesson doc={lesson.source} settings={settings} saveCount={saveCount} prompt={lesson.teacher.prompt} setPrompt={(prompt) => dispatch({ type: 'promptChanged', prompt })} lesson={lesson} dispatch={dispatch} openSettings={() => settingsRef.current.open()} />}
+      {lesson.source && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
 
       <textarea
         className="mt-6 w-full rounded border border-slate-300 p-2"

@@ -17,7 +17,8 @@ const FALLBACK = "The plan couldn't be made. Try again.";
 // this component keeps only the request: its status, the last error, and the "file doesn't cover it"
 // message (a plan-less result).
 // `saveCount` counts successful settings saves: a save after a rejected key re-runs the request.
-export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt, openSettings, lesson, dispatch }) {
+export default function PlanLesson({ lesson, dispatch, settings, saveCount, openSettings }) {
+  const { source: doc, teacher: { prompt } } = lesson;
   const [state, setState] = useState({ status: 'idle' });
   const controller = useRef(null);
   // The newest props, for code that runs after an await and must not use a stale closure.
@@ -78,7 +79,7 @@ export default function PlanLesson({ doc, settings, saveCount, prompt, setPrompt
         rows={3}
         maxLength={MAX_PROMPT_CHARS}
         value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
+        onChange={(e) => dispatch({ type: 'promptChanged', prompt: e.target.value })}
         placeholder="For example: teach the main ideas in 15 minutes, in English, for 10th graders"
       />
       <div className="mt-2 flex items-center gap-2">
