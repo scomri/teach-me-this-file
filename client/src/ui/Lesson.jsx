@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
-import { decide, reduce } from '../lesson/lesson.js';
+import { reduce } from '../lesson/lesson.js';
 import { sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
 
@@ -13,14 +13,17 @@ const MESSAGES = {
   unreachable: "Couldn't reach the model provider. Try again.",
   timeout: 'The reply took too long. Try again.',
   evaluation_invalid: "The tutor couldn't read that answer. Try again.",
+  invalid_request: "The app sent a request the server couldn't accept. Try again.",
 };
+const EVALUATOR_NOT_FOUND = "The evaluator model wasn't found or isn't available for this key. Check the model settings.";
 const FALLBACK = "The tutor couldn't reply. Try again.";
 
 // The lesson chat. The messages and progress live in the lesson state (`lesson`, `dispatch`); this
 // component keeps the requests in flight, the draft and the last error. It dispatches events and renders state.
 export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   const { plan, progress, source, messages } = lesson;
-  const [errorCode, setErrorCode] = useState(null);
+  const [error, setError] = useState(null); // { code, from: 'teacher' | 'evaluator' }
+  const errorCode = error?.code;
   const [draft, setDraft] = useState('');
   const [evaluating, setEvaluating] = useState(false);
   const current = useRef(null); // the stream in flight: { ac, id, stopped }
@@ -34,7 +37,7 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
     const ac = new AbortController();
     const run = { ac, id: null, stopped: false };
     current.current = run;
-    setErrorCode(null);
+    setError(null);
     try {
       const s = latest.current.settings;
       await streamTeach({
@@ -47,7 +50,7 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
       if (current.current !== run) return; // the lesson screen closed: a newer reply is not ours to settle
       if (run.stopped || ac.signal.aborted) return dispatch({ type: 'teachStopped' });
       dispatch({ type: 'teachFailed' });
-      setErrorCode(error.code);
+      setError({ code: error.code, from: 'teacher' });
     } finally {
       if (current.current === run) current.current = null;
     }
@@ -86,20 +89,22 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
     const ac = new AbortController();
     grading.current = ac;
     setEvaluating(true);
-    setErrorCode(null);
+    setError(null);
     try {
       const evaluation = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
       if (grading.current !== ac) return;
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
       dispatch(event);
-      const { transition, replyStepId } = decide(base, evaluation);
+      const { transition, relevantChunkIds } = after.messages.at(-1);
       if (!transition) return;
-      const named = after.messages.at(-1).relevantChunkIds;
-      reply(transition, replyStepId, named.length ? named : plan.steps.find((s) => s.id === replyStepId).chunkIds, after);
+      // The reply's step is the one progress is on now: the next step after an advance, else the answered one.
+      const stepChunkIds = plan.steps.find((s) => s.id === after.progress.current).chunkIds;
+      // An advance teaches the next step, so it cites that step's chunks; the evaluator's ids are for the answer.
+      reply(transition, after.progress.current, transition !== 'advance' && relevantChunkIds.length ? relevantChunkIds : stepChunkIds, after);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
-      setErrorCode(error.code);
+      setError({ code: error.code, from: 'evaluator' });
     } finally {
       if (grading.current === ac) { grading.current = null; setEvaluating(false); }
     }
@@ -130,8 +135,9 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   // Regenerate and Retry: the last reply's stored transition runs again; progress is not touched.
   function again() {
     const { transition, stepId } = messages.at(-1);
-    dispatch({ type: 'regenerate' });
-    stream(transition, stepId);
+    const event = { type: 'regenerate' };
+    dispatch(event);
+    stream(transition, stepId, reduce(lesson, event)); // the reply being replaced is not part of its own history
   }
 
   useEffect(() => {
@@ -149,7 +155,7 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
   const streaming = last?.status === 'streaming';
   const pendingAnswer = last?.role === 'student' && last.intent === null;
   const index = plan.steps.findIndex((s) => s.id === progress.current);
-  const canAnswer = progress.steps[progress.current].status === 'active' && !!last && !streaming && !pendingAnswer && !evaluating;
+  const canAnswer = progress.steps[progress.current].status === 'active' && !!last && !pendingAnswer && !evaluating && (last.role === 'student' || ['done', 'stopped'].includes(last.status));
   const canContinue = progress.steps[progress.current].status === 'revealed' && last?.transition === 'reveal' && ['done', 'stopped'].includes(last.status);
   const over = draft.length > MAX_ANSWER_CHARS;
 
@@ -184,7 +190,7 @@ export default function Lesson({ lesson, dispatch, settings, openSettings }) {
 
       {errorCode && (last?.status === 'failed' || pendingAnswer) && (
         <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-          {MESSAGES[errorCode] ?? FALLBACK}{' '}
+          {(error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
         </p>
       )}

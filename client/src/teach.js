@@ -1,4 +1,7 @@
 // Teach request: one streamed tutor reply. No React.
+import { MAX_HISTORY_TURNS, MAX_TUTOR_CHARS } from '../../shared/limits.js';
+import { stepChunks } from './plan.js';
+
 export class TeachError extends Error {
   constructor(code) {
     super(code);
@@ -14,19 +17,21 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
   const { plan, source, teacher, progress } = lesson;
   const i = plan.steps.findIndex((s) => s.id === stepId);
   const step = plan.steps[i];
-  const byId = new Map(source.chunks.map((c) => [c.id, c]));
   const request = {
     preset: settings.preset,
     teacher: settings.teacher,
     transition,
     lesson: { ...teacher.constraints, documentLanguage: source.language },
     step: { index: i + 1, total: plan.steps.length, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
-    chunks: step.chunkIds.map((id) => byId.get(id)).filter(Boolean).map(({ id, page, text }) => ({ id, page, text })),
+    chunks: stepChunks(step, source),
   };
   if (transition === 'opening') return request;
   // The step the student just answered: the one before the reply's step when an advance opens the next.
   const answered = transition === 'advance' ? plan.steps[i - 1] : step;
   const { pointsMet, status } = progress.steps[answered.id];
+  // The last turns of the answered step, so a second nudge can read the first. A reply being written has no text yet.
+  request.history = lesson.messages.filter((m) => m.stepId === answered.id && m.text).slice(-MAX_HISTORY_TURNS)
+    .map(({ role, text }) => ({ role, text: role === 'tutor' ? text.slice(-MAX_TUTOR_CHARS) : text }));
   if (transition !== 'recap' || status === 'mastered') { // a recap after a reveal has no answer to confirm
     request.answered = { title: answered.title, checkQuestion: answered.checkQuestion, expected: answered.expected, pointsMet };
   }

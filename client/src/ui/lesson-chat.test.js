@@ -27,11 +27,12 @@ const received = {
   type: 'planReceived', plan: { title: 'A lesson', steps }, coverage: 'full', coverageNote: '', documentLanguage: 'Hebrew',
   constraints: { language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5 },
 };
+let planEvent = received; // a test may swap the plan before mounting
 const settings = { preset: 'gemini', apiKey: 'k', teacher: 'm' };
 
 // App's choice of screen: the plan until the lesson starts, then the chat.
 function Host(props) {
-  const [lesson, dispatch] = React.useReducer(reduce, undefined, () => [{ type: 'fileRead', source: doc }, received].reduce(reduce, initialLesson()));
+  const [lesson, dispatch] = React.useReducer(reduce, undefined, () => [{ type: 'fileRead', source: doc }, planEvent].reduce(reduce, initialLesson()));
   return lesson.progress
     ? React.createElement(Lesson, { ...props, lesson, dispatch })
     : React.createElement(PlanLesson, { ...props, lesson, dispatch, saveCount: 0 });
@@ -54,7 +55,8 @@ function liveStream(signal) {
   };
 }
 
-async function mount() {
+async function mount(steps) {
+  planEvent = steps ? { ...received, plan: { title: 'A lesson', steps } } : received;
   const teach = []; // one per /api/teach request: { body, headers, stream }
   const cancelled = [];
   const evaluate = []; // one per /api/evaluate request: { body, headers, answer(evaluation), fail(code, status) }
@@ -62,7 +64,7 @@ async function mount() {
     if (url === '/api/evaluate') {
       return new Promise((resolve) => evaluate.push({
         body: JSON.parse(init.body), headers: init.headers,
-        answer: (evaluation) => resolve(Response.json({ evaluation: { relevantChunkIds: [], ...evaluation } })),
+        answer: (evaluation) => resolve(Response.json({ evaluation: evaluation && { relevantChunkIds: [], ...evaluation } })),
         fail: (code, status = 502) => resolve(Response.json({ code }, { status })),
       }));
     }
@@ -196,8 +198,8 @@ test('a connection that closes without done is a failed reply', async () => {
 });
 
 // Answering. Start, let the opening finish, then send answers; each evaluation and reply is fed by hand.
-async function opened() {
-  const ui = await mount();
+async function opened(steps) {
+  const ui = await mount(steps);
   await ui.click('Start');
   await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.text('Plants eat light.'); s.done(); });
   return ui;
@@ -262,9 +264,18 @@ test('an answer sends evaluate, shows thinking, then streams the teach reply; a 
 test('the tutor message cites the evaluator\'s chunk ids when it named any', async () => {
   const ui = await opened();
   const call = await send(ui, 'sugar');
-  await ui.feed(() => call.answer({ ...right, relevantChunkIds: ['c1'] }));
+  await ui.feed(() => call.answer({ ...wrong, relevantChunkIds: ['c1'] }));
   await reply(ui, 1);
   assert.match(ui.text(), /Source: page 2(?!,)/);
+  const next = await send(ui, 'sugar again');
+  await ui.feed(() => next.answer({ ...right, relevantChunkIds: ['c1'] }));
+  assert.equal(ui.teach[2].body.transition, 'advance');
+  await reply(ui, 2);
+  const sources = [...ui.container.querySelectorAll('li')].map((li) => /Source: (.*)$/.exec(li.textContent)?.[1]);
+  assert.equal(sources.at(-1), 'page 3'); // the next step's chunks, not the evaluator's id for the previous step
+  await ui.click('Regenerate');
+  await reply(ui, 3);
+  assert.equal([...ui.container.querySelectorAll('li')].at(-1).textContent.includes('Source: page 3'), true);
   await ui.unmount();
 });
 
@@ -396,5 +407,109 @@ test('a message that is not an answer gets no reply here and leaves the progress
   assert.equal(ui.teach.length, 1);
   assert.match(ui.text(), /Step 1 of 2/);
   assert.equal(ui.composer().disabled, false);
+  await ui.unmount();
+});
+
+// Repeating a reply (Regenerate, Retry) keeps the answered step, its met points and its history.
+const twoPoints = [
+  { id: 's1', title: 'Light', objective: 'o1', chunkIds: ['c1', 'c2'], checkQuestion: 'Why light?', expected: ['alpha', 'beta'] },
+  { id: 's2', title: 'Sugar', objective: 'o2', chunkIds: ['c2'], checkQuestion: 'Why sugar?', expected: ['p'] },
+];
+const partial = { intent: 'answer', keyPointsMet: [0] };
+const both = { intent: 'answer', keyPointsMet: [0, 1] };
+
+test('Regenerate and Retry on a nudge keep the answered step, its met points and the conversation', async () => {
+  const ui = await opened(twoPoints);
+  const call = await send(ui, 'alpha only');
+  await ui.feed(() => call.answer(partial));
+  const first = ui.teach[1].body;
+  assert.equal(first.transition, 'nudge');
+  assert.deepEqual(first.answered, { title: 'Light', checkQuestion: 'Why light?', expected: ['alpha', 'beta'], pointsMet: [0] });
+  assert.deepEqual(first.history, [{ role: 'tutor', text: 'Plants eat light.' }, { role: 'student', text: 'alpha only' }]);
+  await reply(ui, 1, 'Hint one.');
+  await ui.click('Regenerate');
+  assert.deepEqual(ui.teach[2].body.answered, first.answered);
+  assert.deepEqual(ui.teach[2].body.history, first.history); // the reply being regenerated is not its own history
+  await ui.feed(() => { ui.teach[2].stream.start('id-2'); ui.teach[2].stream.fail('rate_limited'); });
+  await ui.click('Retry');
+  assert.equal(ui.teach[3].body.transition, 'nudge');
+  assert.deepEqual(ui.teach[3].body.answered, first.answered);
+  await ui.unmount();
+});
+
+test('a second nudge carries the first nudge and both answers as history, at most 8 turns', async () => {
+  const ui = await opened(twoPoints);
+  let n = 0;
+  for (const text of ['one', 'two', 'three', 'four']) {
+    const call = await send(ui, text);
+    await ui.feed(() => call.answer(n++ ? { intent: 'answer', keyPointsMet: [] } : partial));
+    if (ui.teach.at(-1).body.transition === 'reveal') break;
+    await reply(ui, ui.teach.length - 1, `Hint ${text}.`);
+  }
+  const bodies = ui.teach.map((t) => t.body).filter((b) => b.transition === 'nudge');
+  assert.deepEqual(bodies[1].history.map((m) => m.text), ['Plants eat light.', 'one', 'Hint one.', 'two']);
+  assert.ok(bodies.every((b) => b.history.length <= 8));
+  await ui.unmount();
+});
+
+test('Regenerate and Retry on an advance keep the answered step and all its points', async () => {
+  const ui = await opened(twoPoints);
+  const call = await send(ui, 'alpha and beta');
+  await ui.feed(() => call.answer(both));
+  const first = ui.teach[1].body;
+  assert.equal(first.transition, 'advance');
+  assert.deepEqual(first.answered.pointsMet, [0, 1]);
+  await reply(ui, 1, 'Right.');
+  await ui.click('Regenerate');
+  assert.deepEqual(ui.teach[2].body.answered, first.answered);
+  assert.deepEqual(ui.teach[2].body.step, first.step);
+  await ui.feed(() => { ui.teach[2].stream.start('id-2'); ui.teach[2].stream.fail('unreachable'); });
+  await ui.click('Retry');
+  assert.deepEqual(ui.teach[3].body.answered, first.answered);
+  assert.deepEqual(ui.teach[3].body.history, first.history);
+  await ui.unmount();
+});
+
+test('the composer stays off after a failed reply, until Retry finishes it', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.fail('unreachable'); });
+  assert.equal(ui.composer().disabled, true);
+  await ui.click('Retry');
+  await reply(ui, 1, 'Plants eat light.');
+  assert.equal(ui.composer().disabled, false);
+  await ui.unmount();
+});
+
+test('only the tail of a long tutor reply goes to the evaluator', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  const long = `${'a'.repeat(7000)} Why light?`;
+  await reply(ui, 0, long);
+  const call = await send(ui, 'sugar');
+  assert.equal(call.body.lastTutor.length, 5000);
+  assert.ok(call.body.lastTutor.endsWith('Why light?'));
+  await ui.unmount();
+});
+
+test('an evaluation the server could not get (null) is an error with Retry, and no reply streams', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.answer(null));
+  assert.match(ui.text(), /couldn't read that answer/);
+  assert.equal(ui.teach.length, 1);
+  assert.ok(ui.button('Retry'));
+  await ui.unmount();
+});
+
+test('a rejected evaluator model names the evaluator, and a rejected request has its own message', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.fail('model_not_found', 404));
+  assert.match(ui.text(), /evaluator model/);
+  assert.ok(ui.button('Open Settings'));
+  await ui.click('Retry');
+  await ui.feed(() => ui.evaluate[1].fail('invalid_request', 400));
+  assert.match(ui.text(), /server couldn't accept/);
   await ui.unmount();
 });

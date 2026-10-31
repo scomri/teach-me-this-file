@@ -44,3 +44,10 @@ export const MAX_ANSWER_CHARS = 1000;
 // Largest model output of one evaluation (a label, point indexes and chunk ids), in tokens. Mostly
 // headroom for models that count reasoning tokens against the same cap.
 export const EVALUATE_OUTPUT_TOKENS = 2048;
+
+// Longest tutor message the evaluate and teach requests carry, in characters: a reply can reach about 8,000
+// (TEACH_OUTPUT_TOKENS), so the client sends only the tail, which holds the question the reply ends with.
+export const MAX_TUTOR_CHARS = 5000;
+
+// Turns of the current step (tutor and student messages) a teach request carries as conversation.
+export const MAX_HISTORY_TURNS = 8;

@@ -13,6 +13,20 @@ const invalid = { code: 'invalid_request' };
 // Ids and pages go into prompt attributes, so they are checked, not escaped.
 export const isId = (id) => typeof id === 'string' && /^[\w-]{1,20}$/.test(id);
 
+// A step's chunks as the evaluate and teach requests carry them: a non-empty array of { id, page?, text } with
+// distinct ids, within the document cap. Returns the Set of ids, or null.
+export function validChunks(chunks) {
+  if (!Array.isArray(chunks) || !chunks.length) return null;
+  let chars = 0;
+  const ids = new Set();
+  for (const c of chunks) {
+    if (!isId(c?.id) || ids.has(c.id) || typeof c.text !== 'string' || (c.page != null && !Number.isInteger(c.page))) return null;
+    ids.add(c.id);
+    chars += c.text.length;
+  }
+  return chars > MAX_DOC_CHARS ? null : ids;
+}
+
 // Returns the checked request, or an error code. The document is either `chunks` (the full text) or
 // an `outline` of it with `chunkIds`, the id of every chunk, in document order.
 function validateRequest(body) {

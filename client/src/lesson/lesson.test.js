@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decide, initialLesson, reduce } from './lesson.js';
+import { initialLesson, reduce } from './lesson.js';
 
 const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text: 'Photosynthesis.' }] };
 const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
@@ -321,13 +321,17 @@ test('a correct answer on the last step is a recap, and the lesson has nothing l
   assert.equal(reduce(s, { type: 'answerSent', text: 'more' }), s);
 });
 
-test('decide names the move without changing state', () => {
-  const s = opened();
-  const move = (e) => decide(s, { relevantChunkIds: [], ...e });
-  assert.deepEqual(move(ans(0, 1)), { intent: 'answer', result: 'correct', transition: 'advance', replyStepId: 's2' });
-  assert.deepEqual(move(ans(0)), { intent: 'answer', result: 'partial', transition: 'nudge', replyStepId: 's1' });
-  assert.equal(move({ intent: 'off_topic', keyPointsMet: [] }).transition, null);
-  assert.equal(s.progress.current, 's1');
+test('the reply step is the progress step after evaluated: the next step on an advance, else the answered one', () => {
+  assert.equal(answer(opened(), 'a and b', ans(0, 1)).progress.current, 's2');
+  assert.equal(answer(opened(), 'a', ans(0)).progress.current, 's1');
+  assert.equal(answer(opened(plan), 'p', ans(0)).progress.current, 's1'); // a recap stays on the last step
+});
+
+test('answerSent waits for the tutor reply to be done or stopped: not while it failed', () => {
+  const failed = reduce(reduce(reduce(planned(three), { type: 'lessonStarted' }), begin), { type: 'teachFailed' });
+  assert.equal(reduce(failed, { type: 'answerSent', text: 'x' }), failed);
+  const stopped = reduce(reduce(reduce(planned(three), { type: 'lessonStarted' }), begin), { type: 'teachStopped' });
+  assert.equal(reduce(stopped, { type: 'answerSent', text: 'x' }).messages.length, 2);
 });
 
 test('a message that is not an answer gets its intent and changes no progress or points', () => {

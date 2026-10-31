@@ -35,7 +35,7 @@ const ATTEMPTS = 2; // failed attempts on a step before the tutor reveals the an
 const streamingReply = (stepId, transition, chunkIds) => ({ role: 'tutor', stepId, text: '', transition, chunkIds, status: 'streaming' });
 
 // Grades an evaluation against the current step: the points it adds (a union with earlier answers), the
-// result, and the move. A message that is not an answer has no move here (null). Pure; reduce applies it.
+// result, and the move. A message that is not an answer has no move here (null). Pure.
 function grade(state, evaluation) {
   const { plan, progress } = state;
   const id = progress.current;
@@ -46,18 +46,11 @@ function grade(state, evaluation) {
   const pointsMet = [...new Set([...before.pointsMet, ...met])].sort((a, b) => a - b);
   const next = stepAfter(plan, id);
   if (pointsMet.length === step.expected.length) {
-    return { intent: 'answer', result: 'correct', transition: next ? 'advance' : 'recap', replyStepId: next?.id ?? id, pointsMet, fails: before.fails, status: 'mastered', next };
+    return { intent: 'answer', result: 'correct', transition: next ? 'advance' : 'recap', pointsMet, fails: before.fails, status: 'mastered', next };
   }
   const fails = pointsMet.length > before.pointsMet.length ? before.fails : before.fails + 1; // a failed attempt adds no point
   const reveal = fails >= ATTEMPTS;
-  return { intent: 'answer', result: pointsMet.length ? 'partial' : 'wrong', transition: reveal ? 'reveal' : 'nudge', replyStepId: id, pointsMet, fails, status: reveal ? 'revealed' : 'active' };
-}
-
-// What the move is for an evaluation, without changing anything: { intent, result, transition, replyStepId }.
-// transition is null for a message that is not an answer; replyStepId is the step the reply belongs to.
-export function decide(state, evaluation) {
-  const { intent, result, transition, replyStepId } = grade(state, evaluation);
-  return transition ? { intent, result, transition, replyStepId } : { intent, transition };
+  return { intent: 'answer', result: pointsMet.length ? 'partial' : 'wrong', transition: reveal ? 'reveal' : 'nudge', pointsMet, fails, status: reveal ? 'revealed' : 'active' };
 }
 
 export function reduce(state, event) {
@@ -83,7 +76,8 @@ export function reduce(state, event) {
     }
     case 'answerSent': { // the student's message; its evaluation comes next
       const { progress } = state;
-      if (!progress || progress.steps[progress.current].status !== 'active' || pendingAnswer(state) || lastTutor(state)?.status === 'streaming') return state;
+      // the turn is over only once the tutor's reply is done or stopped (a failed one is retried first)
+      if (!progress || progress.steps[progress.current].status !== 'active' || pendingAnswer(state) || (lastTutor(state) && !['done', 'stopped'].includes(lastTutor(state).status))) return state;
       return { ...state, messages: [...state.messages, { role: 'student', stepId: progress.current, text: event.text, intent: null }] };
     }
     case 'evaluated': { // sets the intent, and applies the move to progress before the reply streams
