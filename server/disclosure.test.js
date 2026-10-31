@@ -33,6 +33,20 @@ test('a rejected tutor draft is never sent, even partially', async (t) => {
   assert.equal(calls.length, 2);
 });
 
+test('protected drafts are checked against their supplied source before display', async (t) => {
+  let validation;
+  const post = await serve(t, async (_, init) => {
+    const body = JSON.parse(init.body);
+    if (body.stream) return streamText('Water boils at 100 degrees.');
+    validation = body.messages;
+    return wrapped({ flagged: [0], uncertain: false });
+  });
+  const text = await (await post('teach', requestFor('opening', { chunks: [{ id: 'c1', text: 'Water freezes at zero.' }] }))).text();
+  assert.doesNotMatch(text, /Water boils/);
+  assert.match(validation[0].content, /unsupported|ground/i);
+  assert.match(validation[1].content, /Water freezes at zero/);
+});
+
 const requestFor = (transition, extra = {}) => ({ preset: 'gemini', evaluator: 'checker', transition, lesson: { language: 'English' }, step: { index: 1, total: 2, title: 'Light', objective: 'Explain', checkQuestion: 'Why?' }, protectedPoints: ['energy'], questionValidated: true, chunks: [{ id: 'c1', text: 'energy' }], ...extra });
 const answered = { title: 'Light', checkQuestion: 'Why?', expected: ['energy', 'water'], pointsMet: [1] };
 const streamText = (value) => new Response('data: ' + JSON.stringify({ choices: [{ delta: { content: value } }] }) + '\n\ndata: [DONE]\n\n');
