@@ -12,7 +12,7 @@ function where(c, kind) {
   return [c.id, page, c.heading].filter(Boolean).join(' · ');
 }
 
-export default function FileIngest({ onDoc }) {
+export default function FileIngest({ onDoc, confirmPick }) {
   const [state, setState] = useState({ status: 'idle' });
   const inputRef = useRef(null);
   const requestRef = useRef(0);
@@ -42,7 +42,7 @@ export default function FileIngest({ onDoc }) {
   function pick(e) {
     const file = e.target.files[0];
     e.target.value = ''; // so picking the same file again re-reads it
-    if (file) read(file);
+    if (file && (confirmPick?.() ?? true)) read(file);
   }
 
   const { doc } = state;
