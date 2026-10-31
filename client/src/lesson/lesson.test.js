@@ -33,7 +33,7 @@ test('fileRead stores the file, keeps the typed prompt and drops the plan of the
   assert.ok(s.plan);
   const next = { ...doc, name: 'b.txt' };
   s = reduce(s, { type: 'fileRead', source: next });
-  assert.equal(s.source, next);
+  assert.deepEqual(s.source, { ...next, language: null, dir: 'ltr' });
   assert.equal(s.teacher.prompt, 'teach it');
   assert.deepEqual(s.teacher.constraints, noConstraints);
   assert.equal(s.plan, null);
@@ -43,6 +43,21 @@ test('fileRead with no file (a pick started or failed) empties the source and th
   const s = reduce(reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), received), { type: 'fileRead', source: null });
   assert.equal(s.source, null);
   assert.equal(s.plan, null);
+});
+
+test('fileRead sets the direction from the main script; the language waits for the planner', () => {
+  const hebrew = { ...doc, chunks: [{ id: 'c1', page: 1, text: 'Chapter 1' }, { id: 'c2', page: 1, text: 'פוטוסינתזה הופכת אור לסוכר.' }] };
+  const s = reduce(initialLesson(), { type: 'fileRead', source: hebrew });
+  assert.deepEqual(s.source, { ...hebrew, language: null, dir: 'rtl' });
+  assert.deepEqual(hebrew, { ...doc, chunks: hebrew.chunks }); // the ingested file is left as it was
+});
+
+test('planReceived names the file language as the planner read it, and a new file forgets it', () => {
+  let s = reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), { ...received, documentLanguage: 'Hebrew' });
+  assert.equal(s.source.language, 'Hebrew');
+  assert.equal(s.source.dir, 'ltr');
+  s = reduce(s, { type: 'fileRead', source: doc });
+  assert.equal(s.source.language, null);
 });
 
 test('planReceived stores the teacher constraints, and the plan with its coverage and the requests it bounded', () => {
@@ -69,7 +84,7 @@ test('planCleared returns to setup and keeps the file and the prompt', () => {
   s = reduce(reduce(s, received), { type: 'planCleared' });
   assert.equal(s.plan, null);
   assert.deepEqual(s.teacher.constraints, noConstraints);
-  assert.equal(s.source, doc);
+  assert.deepEqual(s.source, { ...doc, language: null, dir: 'ltr' });
   assert.equal(s.teacher.prompt, 'teach it');
 });
 

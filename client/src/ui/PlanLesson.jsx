@@ -34,9 +34,9 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
     const sent = { ...latest.current, wholeFile, ...(earlier !== undefined && { prompt: earlier }) };
     setState((s) => ({ ...s, status: 'planning' }));
     try {
-      const { plan, constraints, coverage, coverageNote } = await requestPlan({ ...sent, signal: ac.signal });
+      const { plan, constraints, coverage, coverageNote, documentLanguage } = await requestPlan({ ...sent, signal: ac.signal });
       if (plan) {
-        dispatch({ type: 'planReceived', plan, constraints, coverage, coverageNote });
+        dispatch({ type: 'planReceived', plan, constraints, coverage, coverageNote, documentLanguage });
         setState({ status: 'done', wholeFile, prompt: sent.prompt });
       } else {
         dispatch({ type: 'planCleared' });

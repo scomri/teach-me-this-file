@@ -138,6 +138,7 @@ test('the plan route sends a fenced strict-schema teacher request and returns a 
   assert.equal(res.status, 200);
   const body = await res.json();
   assert.equal(body.plan.steps[2].id, 's3');
+  assert.equal(body.documentLanguage, 'Hebrew'); // the file's language, as the model named it
   assert.equal(body.constraints.language, 'English');
   assert.equal(body.constraints.maxSteps, 5);
 
@@ -344,4 +345,10 @@ test('an empty prompt plans the whole file with every default and no topic', asy
   assert.match(calls[0].messages[1].content, /<teacher_request>\n\(no request: use the defaults\)\n<\/teacher_request>$/);
   assert.deepEqual([body.coverage, body.constraints.maxSteps, body.constraints.minutes, body.constraints.language], ['full', 5, null, 'Hebrew']);
   assert.equal(body.plan.steps.length, 3);
+});
+
+test('a validated plan names the document language in full, with or without a plan', () => {
+  assert.equal(validatePlan(reply(undefined, { documentLanguage: 'he' }), ids).documentLanguage, 'Hebrew');
+  const none = validatePlan(reply(undefined, { coverage: 'none', coverageNote: 'About biology.', documentLanguage: 'Arabic' }), ids);
+  assert.deepEqual([none.plan, none.documentLanguage], [null, 'Arabic']);
 });

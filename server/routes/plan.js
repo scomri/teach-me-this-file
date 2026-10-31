@@ -84,8 +84,8 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
         try { reply = JSON.parse(content); } catch { reply = null; }
         const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids, { promptBlank: !request.prompt.trim(), wholeFile: request.wholeFile }) : { ok: false, errors: ['the reply was not a JSON object'] };
         if (result.ok) {
-          const { plan, constraints, coverage, coverageNote } = result;
-          return res.json({ plan, constraints, coverage, coverageNote });
+          const { plan, constraints, coverage, coverageNote, documentLanguage } = result;
+          return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
         }
         messages = repairMessages(messages, content, result.errors);
       }
