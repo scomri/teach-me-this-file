@@ -71,6 +71,13 @@ test('planReceived stores the teacher constraints, and the plan with its coverag
   assert.deepEqual(s.messages, []);
 });
 
+test('planReceived without constraints still stores the plan and keeps the empty teacher constraints', () => {
+  const { constraints: _omitted, ...bare } = received;
+  const s = reduce(reduce(initialLesson(), { type: 'fileRead', source: doc }), bare);
+  assert.deepEqual(s.teacher.constraints, noConstraints);
+  assert.deepEqual(s.plan, { ...plan, coverage: 'partial', coverageNote: 'the Krebs cycle', maxSteps: undefined, requested: { steps: undefined, outsideSources: undefined } });
+});
+
 test('planReceived replaces an earlier plan', () => {
   const second = { ...received, plan: { ...plan, title: 'Another' }, coverage: 'full', coverageNote: '' };
   const s = reduce(reduce(initialLesson(), received), second);

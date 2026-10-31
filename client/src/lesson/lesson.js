@@ -34,7 +34,7 @@ export function reduce(state, event) {
       return { ...state, teacher: { ...state.teacher, prompt: event.prompt } };
     case 'planReceived': {
       const { plan, coverage, coverageNote, documentLanguage } = event;
-      const { language, minutes, audience, style, steps, outsideSources, maxSteps } = event.constraints;
+      const { language = null, minutes = null, audience = null, style = null, steps, outsideSources, maxSteps } = event.constraints ?? {};
       return {
         ...withoutPlan(state),
         source: state.source && { ...state.source, language: documentLanguage ?? null },
