@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { initialLesson, reduce, normalizeSaved, savedRecord } from './lesson.js';
-import { shouldSave } from './persist.js';
+import { shouldSave, createWriter } from './persist.js';
 
 const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text: 'Photosynthesis.' }] };
 const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
@@ -55,4 +55,46 @@ test('shouldSave skips stream chunks and saves every other change', () => {
   assert.equal(shouldSave(chunk, reduce(chunk, { type: 'teachStopped' })), true);
   assert.equal(shouldSave(chunk, reduce(chunk, { type: 'teachFailed' })), true);
   assert.equal(shouldSave(started, started), false);
+});
+
+const gated = () => { // a store whose writes finish when released
+  const log = []; const gates = [];
+  const perform = (op) => { log.push(op); return new Promise((res, rej) => gates.push({ res, rej })); };
+  return { log, gates, perform };
+};
+
+test('a burst of saves during a write leaves two writes, the second with the last record', async () => {
+  const { log, gates, perform } = gated();
+  const write = createWriter(perform);
+  const all = [1, 2, 3, 4, 5].map((n) => write({ type: 'put', record: n }));
+  assert.equal(log.length, 1);
+  gates[0].res();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(log, [{ type: 'put', record: 1 }, { type: 'put', record: 5 }]);
+  gates[1].res();
+  await Promise.all(all);
+});
+
+test('a clear after a put lands last', async () => {
+  const { log, gates, perform } = gated();
+  const write = createWriter(perform);
+  const a = write({ type: 'put', record: 1 });
+  const b = write({ type: 'put', record: 2 });
+  const c = write({ type: 'clear' });
+  gates[0].res(); await new Promise((r) => setImmediate(r)); gates[1].res();
+  await Promise.all([a, b, c]);
+  assert.deepEqual(log.map((o) => o.type), ['put', 'clear']);
+});
+
+test('a failing write rejects its callers, and later writes still run', async () => {
+  const { log, gates, perform } = gated();
+  const write = createWriter(perform);
+  const a = write({ type: 'put', record: 1 });
+  const b = write({ type: 'put', record: 2 });
+  gates[0].rej(new Error('blocked'));
+  await assert.rejects(a, /blocked/);
+  await new Promise((r) => setImmediate(r));
+  gates[1].res();
+  await b;
+  assert.equal(log.length, 2);
 });
