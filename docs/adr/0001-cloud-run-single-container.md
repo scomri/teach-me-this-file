@@ -13,11 +13,12 @@ The app needs a public URL, server-side streaming of model replies, and a server
 - **max-instances 1, min-instances 0.** Cost is capped by the instance limit; a budget alert covers anything unexpected. Min-instances goes to 1 only for the review window, to avoid cold starts there.
 - **Manual deploy, no CD.** One documented command (`gcloud run deploy --source .`). CI runs tests, build and a secret scan, and holds no cloud credentials. *Superseded by [ADR 0004](0004-continuous-deploy.md): CI now deploys every push to `main` after tests pass, with short-lived credentials and no stored key.*
 - **Explicit stream cancel.** Cloud Run's front end keeps its connection to the container open after the browser disconnects. A 60-word stream cut off by the client after 1.2 s still ran for its full 9 s on the server. So each stream opens with a random id, and Stop calls `POST /api/streams/:id/cancel`. Every stream also ends after 120 s at most.
+- **Bounded shutdown.** On shutdown, stop accepting connections and let active streams finish for up to eight seconds, then close remaining connections. This gives replies time to finish within Cloud Run's ten-second shutdown grace period.
 
 ## Consequences
 
 - Active streams live in an in-memory map. Cancel only works because every request reaches the same instance. Raising max-instances needs sticky routing or a shared store first.
 - A cold start costs **4–7 s** on the first request after the instance has scaled to zero (two samples: 7.3 s and 4.2 s, of which 6.5 s and 3.5 s were Cloud Run starting the container; a warm request takes 0.2 s). Idle instances were still warm after 17 minutes. The client warms the server with `/api/health` on load and shows a "waking the server" state if the first request takes over 1.5 s.
-- The server stays stateless apart from the live stream map, so a restart loses nothing but in-flight replies.
+- The server stays stateless apart from the live stream map. A restart can still interrupt replies that outlast the shutdown grace period.
 - The cancel POST must carry a body length. The front end rejects a bodyless POST without `Content-Length` with 411. Browsers send `Content-Length: 0`; scripts must send an empty body.
 - HTTP/2 end-to-end (`--use-http2`) is off: Express speaks HTTP/1.1 only.
