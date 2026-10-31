@@ -88,6 +88,18 @@ Verification: reducer tests (start, chunks, done, stopped, failed, regenerate, l
 
 Known weaknesses: the step title, objective and question come from the plan model and the server does not check them against a plan (it keeps none), so a caller can send any step text; the fence and the prompt rule keep it as material, but a prompt rule is not a guarantee. A reply cut by the output cap is shown as done; the 120-word limit is a prompt rule, not checked by code; the composer is disabled until answers are supported.
 
+## Resuming a lesson (built)
+
+A refresh, a reopened tab or a server cold start brings the lesson back. The lesson state is saved in the browser's IndexedDB, using the native API behind a thin wrapper in `client/src/lesson/persist.js`: one database, one object store, one key, holding the single current lesson.
+
+- **What is saved.** The lesson state and nothing else (file chunks, prompt, plan, progress, messages), built by a function that picks those fields by name. The API key and model settings are never part of the record; a unit test checks that a state carrying a key or settings writes neither.
+- **When.** After every state change except stream chunks, so the write rate is a few per turn rather than one per token. A reply is saved when it starts, and again when it ends as done, stopped or failed. Writes are queued so an older save cannot land after a newer one. An empty lesson (no file, no prompt) deletes the record instead.
+- **On load.** A pure normalizer in the lesson module runs first. A reply still marked `streaming` comes back as `stopped` with the text saved so far, so Regenerate is available. A record whose `version` differs is discarded and a notice says so. A valid lesson passes through unchanged. The screen follows from the state as before: a lesson in plan review returns on the plan screen, a lesson in progress returns in the chat at the same step. The lesson area waits for the load, so the empty screen does not flash.
+- **New lesson** asks for confirmation when a file is loaded, then resets the state and deletes the record.
+- **Storage unavailable** (a private window, blocked storage): the lesson runs in memory and a visible notice says it will be lost on refresh, as the settings panel does for tab storage.
+- **Why IndexedDB is checked by hand.** The wrapper is about thirty lines over a browser API. A stub such as `fake-indexeddb` would test the stub rather than the browser, so the rules (what is saved, when, what a load returns) are unit-tested as pure functions and the wrapper was run in a real browser against a stub provider: refresh during plan review, refresh mid-lesson, refresh mid-stream (the reply shows as stopped with Regenerate), New lesson asking first, and a storage failure showing the notice while the lesson still works. A storage failure at load (as opposed to at save) shares the same notice code but was not driven in the browser.
+
+Known weakness: text streamed since a reply started is not saved, so a reload mid-stream brings the reply back as stopped with its text empty (or as it was when the reply began); Regenerate recovers it. Saving the text on a timer would narrow this at the cost of more writes.
 ## Libraries
 
 - **express** (runtime): HTTP server; serves the built client and the API.

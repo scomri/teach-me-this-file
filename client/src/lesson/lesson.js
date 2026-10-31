@@ -74,3 +74,15 @@ export function reduce(state, event) {
       return state;
   }
 }
+
+// Persistence helpers (pure). The record is the lesson state and nothing else: never the API key or settings.
+export const savedRecord = (s) => ({ version: s.version, source: s.source, teacher: s.teacher, plan: s.plan, progress: s.progress, messages: s.messages });
+
+// A loaded record becomes a lesson, or null. discarded: something was saved but cannot be used (wrong version).
+// A reply cut off by a reload was streaming; it comes back stopped with the text saved so far.
+export function normalizeSaved(saved) {
+  if (saved == null) return { lesson: null, discarded: false };
+  if (typeof saved !== 'object' || saved.version !== initialLesson().version || !Array.isArray(saved.messages)) return { lesson: null, discarded: true };
+  const messages = saved.messages.map((m) => (m.status === 'streaming' ? { ...m, status: 'stopped' } : m));
+  return { lesson: { ...savedRecord(saved), messages }, discarded: false };
+}
