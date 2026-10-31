@@ -25,9 +25,8 @@ export function evaluateRequest({ lesson, message, settings }) {
   };
 }
 
-// Resolves with { intent, keyPointsMet, relevantChunkIds }. Throws EvaluateError with the server's code,
-// 'evaluation_invalid' when the server could not get a valid evaluation (null), 'unreachable' for a network
-// failure or a reply that is not an evaluation, or the AbortError when `signal` aborted.
+// Resolves with { evaluation, rateLimitRetried? }; evaluation can be null after a failed repair.
+// Throws EvaluateError with the server's code or 'unreachable', or AbortError when `signal` aborted.
 export async function requestEvaluation({ lesson, message, settings, signal }, fetchImpl = fetch) {
   let response;
   try {
@@ -43,7 +42,6 @@ export async function requestEvaluation({ lesson, message, settings, signal }, f
   }
   const body = await response.json().catch((error) => { if (signal?.aborted) throw error; return {}; });
   if (!response.ok) throw new EvaluateError(body.code ?? 'unreachable');
-  if (body.evaluation === null) throw new EvaluateError('evaluation_invalid');
-  if (!body.evaluation) throw new EvaluateError('unreachable');
-  return body.evaluation;
+  if (!Object.hasOwn(body, 'evaluation')) throw new EvaluateError('unreachable');
+  return body;
 }

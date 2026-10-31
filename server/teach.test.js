@@ -237,6 +237,28 @@ test('nudge carries only the missing key points, and says to guide toward them, 
   assert.match(user, /Write the reply in[^\n]*$/);
 });
 
+test('scaffold carries missing points; question and redirect carry no key points', async (t) => {
+  const scaffold = await userOf(t, { transition: 'scaffold', answered: answered([1]) });
+  assert.ok(scaffold.includes('SECRET-ALPHA') && !scaffold.includes('SECRET-BETA'));
+  for (const transition of ['answer_question', 'redirect']) {
+    const user = await userOf(t, { transition, questionCovered: false, answered: answered() });
+    assert.ok(!user.includes('SECRET-ALPHA'));
+    if (transition === 'answer_question') assert.match(user, /no relevant passages/i);
+  }
+});
+
+test('a rate limit is retried once, shared with evaluation', async (t) => {
+  let calls = 0;
+  const providerFetch = async () => { calls++; return new Response('{}', { status: 429 }); };
+  const { url } = start(t, { providerFetch });
+  const first = events(await (await teach(url, request())).text());
+  assert.equal(calls, 2);
+  assert.deepEqual(first.at(-1), ['error', { error: 'rate_limited' }]);
+  calls = 0;
+  await (await teach(url, request({ rateLimitRetried: true }))).text();
+  assert.equal(calls, 1);
+});
+
 test('nudge with no missing point is rejected', async (t) => {
   const { url } = start(t, { providerFetch: provider() });
   assert.equal((await teach(url, request({ transition: 'nudge', answered: answered([0, 1, 2]) }))).status, 400);

@@ -32,9 +32,10 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
   // The last turns of the answered step, so a second nudge can read the first. A reply being written has no text yet.
   request.history = lesson.messages.filter((m) => m.stepId === answered.id && m.text).slice(-MAX_HISTORY_TURNS)
     .map(({ role, text }) => ({ role, text: role === 'tutor' ? text.slice(-MAX_TUTOR_CHARS) : text }));
-  if (transition !== 'recap' || status === 'mastered') { // a recap after a reveal has no answer to confirm
+  if (!['answer_question', 'redirect'].includes(transition) && (transition !== 'recap' || status === 'mastered')) { // a recap after a reveal has no answer to confirm
     request.answered = { title: answered.title, checkQuestion: answered.checkQuestion, expected: answered.expected, pointsMet };
   }
+  if (transition === 'answer_question') request.questionCovered = !!lesson.messages.findLast((m) => m.role === 'student')?.relevantChunkIds?.length;
   if (transition === 'recap') {
     const titles = (wanted) => plan.steps.filter((s) => progress.steps[s.id].status === wanted).map((s) => s.title);
     request.recap = { mastered: titles('mastered'), revealed: titles('revealed') };

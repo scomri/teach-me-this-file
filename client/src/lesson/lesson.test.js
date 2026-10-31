@@ -334,12 +334,30 @@ test('answerSent waits for the tutor reply to be done or stopped: not while it f
   assert.equal(reduce(stopped, { type: 'answerSent', text: 'x' }).messages.length, 2);
 });
 
-test('a message that is not an answer gets its intent and changes no progress or points', () => {
+test('asking for the answer scaffolds once and then reveals without counting failures', () => {
   const before = opened();
   const s = answer(before, 'what is the answer?', { intent: 'asks_for_answer', keyPointsMet: [0, 1] });
   assert.equal(s.messages.at(-1).intent, 'asks_for_answer');
-  assert.equal(s.messages.at(-1).transition, undefined);
-  assert.deepEqual(s.progress, before.progress);
+  assert.equal(s.messages.at(-1).transition, 'scaffold');
+  assert.deepEqual(step(s, 's1'), { status: 'active', pointsMet: [], fails: 0, asks: 1 });
+  const again = answer(s, 'I give up', { intent: 'asks_for_answer' });
+  assert.equal(again.messages.at(-1).transition, 'reveal');
+  assert.deepEqual(step(again, 's1'), { status: 'revealed', pointsMet: [], fails: 0, asks: 2 });
+});
+
+test('questions, off-topic messages and a missing evaluation do not change progress', () => {
+  for (const [evaluation, transition] of [
+    [{ intent: 'question', relevantChunkIds: ['c1'] }, 'answer_question'],
+    [{ intent: 'question', relevantChunkIds: [] }, 'answer_question'],
+    [{ intent: 'off_topic' }, 'redirect'],
+    [null, 'nudge'],
+  ]) {
+    const before = opened();
+    const sent = reduce(before, { type: 'answerSent', text: 'help' });
+    const s = reduce(sent, { type: 'evaluated', evaluation });
+    assert.equal(s.messages.at(-1).transition, transition);
+    assert.deepEqual(s.progress, before.progress);
+  }
 });
 
 test('evaluated with no answer waiting for it changes nothing', () => {

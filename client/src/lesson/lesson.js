@@ -35,13 +35,18 @@ const ATTEMPTS = 2; // failed attempts on a step before the tutor reveals the an
 const streamingReply = (stepId, transition, chunkIds) => ({ role: 'tutor', stepId, text: '', transition, chunkIds, status: 'streaming' });
 
 // Grades an evaluation against the current step: the points it adds (a union with earlier answers), the
-// result, and the move. A message that is not an answer has no move here (null). Pure.
+// result, and the move. Pure.
 function grade(state, evaluation) {
   const { plan, progress } = state;
   const id = progress.current;
   const step = plan.steps.find((s) => s.id === id);
   const before = progress.steps[id];
-  if (evaluation.intent !== 'answer') return { intent: evaluation.intent, transition: null };
+  if (!evaluation) return { intent: 'evaluation_failed', transition: 'nudge', ...before };
+  if (evaluation.intent === 'asks_for_answer') {
+    const asks = before.asks + 1;
+    return { ...before, intent: evaluation.intent, asks, transition: asks >= 2 ? 'reveal' : 'scaffold', status: asks >= 2 ? 'revealed' : 'active' };
+  }
+  if (evaluation.intent !== 'answer') return { ...before, intent: evaluation.intent, transition: evaluation.intent === 'question' ? 'answer_question' : 'redirect' };
   const met = (evaluation.keyPointsMet ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < step.expected.length);
   const pointsMet = [...new Set([...before.pointsMet, ...met])].sort((a, b) => a - b);
   const next = stepAfter(plan, id);
@@ -84,12 +89,11 @@ export function reduce(state, event) {
       if (!pendingAnswer(state)) return state;
       const g = grade(state, event.evaluation);
       const message = { ...state.messages.at(-1), intent: g.intent };
-      if (!g.transition) return replaceLast(state, message); // no move for it yet
       const { current, steps } = state.progress;
-      const settled = { ...steps, [current]: { ...steps[current], pointsMet: g.pointsMet, fails: g.fails, status: g.status } };
+      const settled = { ...steps, [current]: { ...steps[current], pointsMet: g.pointsMet, fails: g.fails, asks: g.asks ?? steps[current].asks, status: g.status } };
       if (g.next) settled[g.next.id] = { ...settled[g.next.id], status: 'active' };
       return {
-        ...replaceLast(state, { ...message, result: g.result, transition: g.transition, relevantChunkIds: event.evaluation.relevantChunkIds ?? [] }),
+        ...replaceLast(state, { ...message, ...(g.result && { result: g.result }), transition: g.transition, relevantChunkIds: event.evaluation?.relevantChunkIds ?? [] }),
         progress: { current: g.next?.id ?? current, steps: settled },
       };
     }

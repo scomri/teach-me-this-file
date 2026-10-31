@@ -45,6 +45,11 @@ export const MAX_ANSWER_CHARS = 1000;
 // headroom for models that count reasoning tokens against the same cap.
 export const EVALUATE_OUTPUT_TOKENS = 2048;
 
+// One evaluation, one teaching reply, one schema repair and one shared rate-limit retry.
+export const TURN_MAX_PROVIDER_REQUESTS = 4;
+export const TURN_RATE_LIMIT_RETRIES = 1;
+export const EVALUATION_MAX_ATTEMPTS = TURN_MAX_PROVIDER_REQUESTS - TURN_RATE_LIMIT_RETRIES - 1;
+
 // Longest tutor message the evaluate and teach requests carry, in characters: a reply can reach about 8,000
 // (TEACH_OUTPUT_TOKENS), so the client sends only the tail, which holds the question the reply ends with.
 export const MAX_TUTOR_CHARS = 5000;

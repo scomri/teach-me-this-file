@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TUTOR_CHARS, TEACH_OUTPUT_TOKENS } from '../../shared/limits.js';
+import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TUTOR_CHARS, TEACH_OUTPUT_TOKENS, TURN_RATE_LIMIT_RETRIES } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { CAPS, MAX_POINTS } from '../ai/plan.js';
@@ -26,7 +26,7 @@ function validAnswered(a) {
 
 // Returns the checked request, or null. The step's chunks are the only document text it carries.
 function validateRequest(body) {
-  const { preset, teacher, transition, lesson, step, chunks, answered, recap, history } = body ?? {};
+  const { preset, teacher, transition, lesson, step, chunks, answered, recap, history, questionCovered, rateLimitRetried = false } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset) || (teacher !== undefined && !text(teacher, MAX_MODEL_CHARS))) return null;
   if (!Object.hasOwn(TRANSITIONS, transition)) return null;
   if (!lesson || ![lesson.language, lesson.audience, lesson.style, lesson.documentLanguage].every(optional)) return null;
@@ -34,9 +34,10 @@ function validateRequest(body) {
   if (![step.title, step.objective, step.checkQuestion].every((v) => text(v, MAX_FIELD_CHARS))) return null;
   if (!validChunks(chunks)) return null;
   // After an answer the request carries that step's key points; an opening never does.
-  const after = transition !== 'opening';
+  if (typeof rateLimitRetried !== 'boolean' || (transition === 'answer_question' && typeof questionCovered !== 'boolean')) return null;
+  const after = !['opening', 'answer_question', 'redirect'].includes(transition);
   const answeredStep = after && (answered !== undefined || transition !== 'recap') ? validAnswered(answered) : undefined; // a recap may omit it
-  if (answeredStep === null || (transition === 'nudge' && answeredStep.pointsMet.length === answeredStep.expected.length)) return null;
+  if (answeredStep === null || (['nudge', 'scaffold'].includes(transition) && answeredStep.pointsMet.length === answeredStep.expected.length)) return null;
   if (transition === 'recap' && !(recap && textList(recap.mastered, MAX_FIELD_CHARS, MAX_STEPS) && textList(recap.revealed, MAX_FIELD_CHARS, MAX_STEPS))) return null;
   if (history !== undefined && !(Array.isArray(history) && history.length <= MAX_HISTORY_TURNS && history.every((m) => (m?.role === 'tutor' && text(m.text, MAX_TUTOR_CHARS)) || (m?.role === 'student' && text(m.text, MAX_ANSWER_CHARS))))) return null;
   const { language = null, audience = null, style = null, documentLanguage = null } = lesson;
@@ -44,7 +45,7 @@ function validateRequest(body) {
     preset, model: teacher?.trim() || PRESETS[preset].teacher, transition,
     lesson: { language, audience, style, documentLanguage },
     step: { index: step.index, total: step.total, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
-    chunks,
+    chunks, questionCovered, rateLimitRetried,
     history: (history ?? []).map(({ role, text }) => ({ role, text })),
     ...(answeredStep && { answered: answeredStep }),
     ...(transition === 'recap' && { recap: { mastered: recap.mastered, revealed: recap.revealed } }),
@@ -98,11 +99,16 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
 
     const stream = openStream(req, res, { log, streams, maxMs: streamMaxMs });
     try {
-      const response = await chatCompletion({
+      const options = {
         preset: request.preset, apiKey, model: request.model, messages: buildTeachMessages(request),
         maxCompletionTokens: TEACH_OUTPUT_TOKENS, stream: true, temperature: 1, signal: stream.signal,
-      }, fetchImpl);
-      const code = await providerOutcome(response);
+      };
+      let response = await chatCompletion(options, fetchImpl);
+      let code = await providerOutcome(response);
+      if (code === 'rate_limited' && !request.rateLimitRetried && TURN_RATE_LIMIT_RETRIES > 0) {
+        response = await chatCompletion(options, fetchImpl);
+        code = await providerOutcome(response);
+      }
       if (code !== 'ok') return stream.end(code);
       if (!response.body) return stream.end('unreachable');
       const any = await readDeltas(response.body, (t) => stream.write({ text: t }));

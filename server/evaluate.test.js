@@ -38,6 +38,30 @@ function provider(...replies) {
 }
 const good = reply({ intent: 'answer', keyPointsMet: [1], relevantChunkIds: ['c1'] });
 
+test('the rate limit retry and schema repair share the turn budget', async (t) => {
+  const providerFetch = provider(429, reply('invalid'), good);
+  const { url } = start(t, { providerFetch });
+  const res = await evaluate(url, request());
+  assert.equal((await res.json()).rateLimitRetried, true);
+  assert.equal(providerFetch.calls.length, 3);
+});
+
+test('a turn with repair and a rate limit ends on the second 429 within four provider calls', async (t) => {
+  const providerFetch = provider(reply('invalid'), 429, good, 429);
+  const { url } = start(t, { providerFetch });
+  const evaluated = await (await evaluate(url, request())).json();
+  const teaching = await fetch(`${url}/api/teach`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': KEY },
+    body: JSON.stringify({
+      preset: 'gemini', transition: 'nudge', rateLimitRetried: evaluated.rateLimitRetried,
+      lesson: {}, step: { index: 1, total: 1, title: 'Light', objective: 'Explain light', checkQuestion: 'Why light?' },
+      chunks: request().chunks, answered: { title: 'Light', checkQuestion: 'Why light?', expected: request().step.expected, pointsMet: [1] },
+    }),
+  });
+  assert.match(await teaching.text(), /rate_limited/);
+  assert.equal(providerFetch.calls.length, 4);
+});
+
 test('a valid request answers { evaluation } and asks the evaluator model for strict JSON', async (t) => {
   const providerFetch = provider(good);
   const { url } = start(t, { providerFetch });

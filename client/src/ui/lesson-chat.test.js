@@ -64,7 +64,7 @@ async function mount(steps) {
     if (url === '/api/evaluate') {
       return new Promise((resolve) => evaluate.push({
         body: JSON.parse(init.body), headers: init.headers,
-        answer: (evaluation) => resolve(Response.json({ evaluation: evaluation && { relevantChunkIds: [], ...evaluation } })),
+        answer: (evaluation, extra = {}) => resolve(Response.json({ evaluation: evaluation && { relevantChunkIds: [], ...evaluation }, ...extra })),
         fail: (code, status = 502) => resolve(Response.json({ code }, { status })),
       }));
     }
@@ -80,7 +80,9 @@ async function mount(steps) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  await act(async () => root.render(React.createElement(Host, { settings, openSettings() {} })));
+  let openedSettings = 0;
+  const render = (nextSettings = settings, saveCount = 0) => act(async () => root.render(React.createElement(Host, { settings: nextSettings, saveCount, openSettings() { openedSettings++; } })));
+  await render();
   const button = (label) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
   const tick = () => new Promise((r) => setTimeout(r, 0));
   const click = (label) => act(async () => { button(label).dispatchEvent(new window.Event('click', { bubbles: true })); await tick(); });
@@ -93,7 +95,7 @@ async function mount(steps) {
     props.onChange({ target: { value } });
     await tick();
   });
-  return { container, teach, evaluate, cancelled, button, click, feed, type, composer, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
+  return { container, teach, evaluate, cancelled, button, click, feed, type, composer, render, openedSettings: () => openedSettings, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
 }
 
 test('Start is enabled on a plan and sends an opening request built from the step, with the key in a header', async () => {
@@ -400,12 +402,58 @@ test('an evaluation that fails keeps the answer, shows the error and Retry evalu
   await ui.unmount();
 });
 
-test('a message that is not an answer gets no reply here and leaves the progress alone', async () => {
+test('a rate limit already retried by evaluation is passed to teaching, whose error offers Retry', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.answer(right, { rateLimitRetried: true }));
+  assert.equal(ui.teach[1].body.rateLimitRetried, true);
+  await ui.feed(() => { ui.teach[1].stream.start('id-1'); ui.teach[1].stream.fail('rate_limited'); });
+  assert.match(ui.text(), /rate-limiting/);
+  assert.ok(ui.button('Retry'));
+  await ui.unmount();
+});
+
+test('a rejected evaluator key opens Settings and saving a new key retries the same answer', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.fail('invalid_key', 401));
+  assert.equal(ui.openedSettings(), 1);
+  await ui.render({ ...settings, apiKey: 'new-key' }, 1);
+  assert.equal(ui.evaluate[1].headers['X-Api-Key'], 'new-key');
+  assert.equal(ui.evaluate[1].body.message, 'sugar');
+  await ui.unmount();
+});
+
+test('a rejected teacher key opens Settings and saving a new key retries the reply', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => { ui.teach[0].stream.start('id-0'); ui.teach[0].stream.fail('invalid_key'); });
+  assert.equal(ui.openedSettings(), 1);
+  await ui.render({ ...settings, apiKey: 'new-key' }, 1);
+  assert.equal(ui.teach[1].headers['X-Api-Key'], 'new-key');
+  assert.equal(ui.teach[1].body.transition, 'opening');
+  await ui.unmount();
+});
+
+test('a key changed during evaluation retries with the new key without opening Settings', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.render({ ...settings, apiKey: 'new-key' }, 1);
+  await ui.feed(() => call.fail('invalid_key', 401));
+  assert.equal(ui.openedSettings(), 0);
+  assert.equal(ui.evaluate[1].headers['X-Api-Key'], 'new-key');
+  assert.equal(ui.evaluate[1].body.message, 'sugar');
+  await ui.unmount();
+});
+
+test('asking for the answer starts a scaffold and leaves the step active', async () => {
   const ui = await opened();
   const call = await send(ui, 'what is the answer?');
   await ui.feed(() => call.answer({ intent: 'asks_for_answer', keyPointsMet: [] }));
-  assert.equal(ui.teach.length, 1);
+  assert.equal(ui.teach.length, 2);
+  assert.equal(ui.teach[1].body.transition, 'scaffold');
   assert.match(ui.text(), /Step 1 of 2/);
+  await reply(ui, 1, 'Try this.');
   assert.equal(ui.composer().disabled, false);
   await ui.unmount();
 });
@@ -492,13 +540,14 @@ test('only the tail of a long tutor reply goes to the evaluator', async () => {
   await ui.unmount();
 });
 
-test('an evaluation the server could not get (null) is an error with Retry, and no reply streams', async () => {
+test('a null evaluation streams an uncounted nudge citing the step', async () => {
   const ui = await opened();
   const call = await send(ui, 'sugar');
   await ui.feed(() => call.answer(null));
-  assert.match(ui.text(), /couldn't read that answer/);
-  assert.equal(ui.teach.length, 1);
-  assert.ok(ui.button('Retry'));
+  assert.equal(ui.teach.length, 2);
+  assert.equal(ui.teach[1].body.transition, 'nudge');
+  assert.deepEqual(ui.teach[1].body.answered.pointsMet, []);
+  assert.match(ui.text(), /Source: pages 2, 3/);
   await ui.unmount();
 });
 
