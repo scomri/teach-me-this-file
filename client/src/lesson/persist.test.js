@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialLesson, reduce, normalizeSaved, savedRecord } from './lesson.js';
-import { shouldSave, createWriter } from './persist.js';
+import { initialLesson, reduce, normalizeSaved, savedRecord, splitSaved, joinSaved } from './lesson.js';
+import { shouldSave, createWriter, coalesce, writeOp } from './persist.js';
 
 const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text: 'Photosynthesis.' }] };
 const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
@@ -97,4 +97,42 @@ test('a failing write rejects its callers, and later writes still run', async ()
   gates[1].res();
   await b;
   assert.equal(log.length, 2);
+});
+test('the saved pair holds lesson state only, the file in its own record', () => {
+  const state = { ...midLesson(), apiKey: 'sk-secret', settings: { apiKey: 'sk-secret' } };
+  const { main, source } = splitSaved(state);
+  assert.deepEqual(Object.keys(main).sort(), ['hasSource', 'messages', 'plan', 'progress', 'teacher', 'version']);
+  assert.equal(source, state.source);
+  assert.ok(!JSON.stringify([main, source]).includes('sk-secret'));
+});
+
+test('joinSaved rebuilds the lesson from its two records, and flags a mismatched pair', () => {
+  const s = reduce(midLesson(), { type: 'teachDone' });
+  const { main, source } = splitSaved(s);
+  assert.deepEqual(normalizeSaved(joinSaved(main, source)).lesson, s);
+  assert.equal(joinSaved(undefined, undefined), undefined);
+  const typed = reduce(initialLesson(), { type: 'promptChanged', prompt: 'hi' }); // no file: no source record
+  assert.deepEqual(normalizeSaved(joinSaved(splitSaved(typed).main, undefined)).lesson, typed);
+  for (const [m, src] of [[main, undefined], [undefined, source], [{ ...main, hasSource: false }, source]]) {
+    assert.deepEqual(normalizeSaved(joinSaved(m, src)), { lesson: null, discarded: true });
+  }
+});
+
+test('writeOp writes the file only when it changed', () => {
+  const s = planned();
+  assert.equal(writeOp(s, null).writeSource, true);
+  assert.equal(writeOp(s, s.source).writeSource, false);
+  const typed = reduce(s, { type: 'promptChanged', prompt: 'more' });
+  assert.equal(writeOp(typed, s.source).writeSource, false);
+  assert.equal(writeOp(reduce(typed, { type: 'fileRead', source: { ...doc, name: 'b.txt' } }), s.source).writeSource, true);
+});
+
+test('a superseded save still writes the newer file; a put after a clear writes it too', () => {
+  const a = { type: 'put', main: 1, source: 'A', writeSource: true };
+  const b = { type: 'put', main: 2, source: 'A', writeSource: false };
+  assert.deepEqual(coalesce(a, b), { type: 'put', main: 2, source: 'A', writeSource: true });
+  assert.deepEqual(coalesce(b, { ...a, source: 'B' }), { type: 'put', main: 1, source: 'B', writeSource: true });
+  assert.deepEqual(coalesce(a, { type: 'clear' }), { type: 'clear' });
+  assert.equal(coalesce({ type: 'clear' }, b).writeSource, true);
+  assert.equal(coalesce(undefined, b).writeSource, false);
 });

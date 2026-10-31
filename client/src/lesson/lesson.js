@@ -86,3 +86,19 @@ export function normalizeSaved(saved) {
   const messages = saved.messages.map((m) => (m.status === 'streaming' ? { ...m, status: 'stopped' } : m));
   return { lesson: { ...savedRecord(saved), messages }, discarded: false };
 }
+
+// The lesson is stored as two records so that typing does not copy the whole document: the file by itself,
+// and everything else with a flag saying whether a file belongs to it.
+export function splitSaved(lesson) {
+  const { source, ...rest } = savedRecord(lesson);
+  return { main: { ...rest, hasSource: source != null }, source };
+}
+
+// The two records back into one saved object for normalizeSaved. undefined: nothing saved. A pair that does not
+// belong together (one missing, or the flag disagrees) is {}, which normalizeSaved discards.
+export function joinSaved(main, source) {
+  if (main == null && source == null) return undefined;
+  if (main == null || typeof main !== 'object' || main.hasSource !== (source != null)) return {};
+  const { hasSource, ...rest } = main;
+  return { ...rest, source: source ?? null };
+}

@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { initialLesson, reduce, normalizeSaved, savedRecord } from './lesson/lesson.js';
+import { initialLesson, reduce, normalizeSaved } from './lesson/lesson.js';
 import { clearSaved, loadSaved, putSaved, shouldSave } from './lesson/persist.js';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
@@ -62,7 +62,7 @@ export default function App() {
     if (!prev) return; // the first state after the load is what was loaded: nothing to write
     if (!shouldSave(prev, lesson)) return;
     const empty = !lesson.source && !lesson.teacher.prompt;
-    (empty ? clearSaved() : putSaved(savedRecord(lesson))).catch(() => { storageOff.current = true; setLessonNotice(storageNotice); });
+    (empty ? clearSaved() : putSaved(lesson)).catch(() => { storageOff.current = true; setLessonNotice(storageNotice); });
   }, [lesson, loaded]);
 
   const confirmDiscard = () => !lesson.source || window.confirm('Start a new lesson? The current lesson will be deleted.');
