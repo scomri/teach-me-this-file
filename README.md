@@ -53,6 +53,8 @@ Keys stay in browser memory by default and travel to the server only in `X-Api-K
 
 ## Planning a lesson
 
+If a text file contains damaged UTF-16 text, the app warns that characters may be missing. Choose another file or continue with the readable text; missing characters appear as `�` and may affect the lesson. The original file is not changed.
+
 Pick a file, optionally describe the lesson in the prompt box (for example "teach the main ideas in 15 minutes, in English, for 10th graders", up to 2,000 characters), and choose Plan. The teacher model returns a plan you can read before any student sees it: a title and, for each step, its objective, a check question, the key points a good answer covers, and the pages it draws on. Regenerate asks for a new plan. Start is disabled until the tutor exists.
 
 The plan says honestly how the file matches the request. If the file covers only part of it, the plan covers what the file contains and the screen adds "Not in the file: …". If it covers none of it, no plan is shown: a message explains, with a **Plan from whole file** button that plans the document's main ideas instead (the language, audience and length in the prompt still apply). An empty prompt plans the whole file with every default.

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ACCEPTED, IngestError, ingestFile } from '../ingest/ingest.js';
 import { detectScript } from '../ingest/script.js';
 import { MAX_FILE_MB } from '../../../shared/limits.js';
@@ -14,21 +14,35 @@ function where(c, kind) {
 
 export default function FileIngest({ onDoc }) {
   const [state, setState] = useState({ status: 'idle' });
+  const inputRef = useRef(null);
+  const requestRef = useRef(0);
 
-  async function pick(e) {
-    const file = e.target.files[0];
-    e.target.value = ''; // so picking the same file again re-reads it
-    if (!file) return;
+  async function read(file, allowDamagedText = false) {
+    const request = ++requestRef.current;
     setState({ status: 'reading' });
     onDoc?.(null);
     const t0 = performance.now();
     try {
-      const doc = await ingestFile(file, { onProgress: (progress) => setState({ status: 'reading', progress }) });
-      setState({ status: 'done', doc, ms: Math.round(performance.now() - t0) });
+      const doc = await ingestFile(file, { allowDamagedText, onProgress: (progress) => {
+        if (request === requestRef.current) setState({ status: 'reading', progress });
+      } });
+      if (request !== requestRef.current) return;
+      setState({ status: 'done', doc, damaged: allowDamagedText, ms: Math.round(performance.now() - t0) });
       onDoc?.(doc);
     } catch (err) {
+      if (request !== requestRef.current) return;
+      if (err instanceof IngestError && err.code === 'damaged_text') {
+        setState({ status: 'damaged', file });
+        return;
+      }
       setState({ status: 'error', message: err instanceof IngestError ? err.message : "This file couldn't be read." });
     }
+  }
+
+  function pick(e) {
+    const file = e.target.files[0];
+    e.target.value = ''; // so picking the same file again re-reads it
+    if (file) read(file);
   }
 
   const { doc } = state;
@@ -38,7 +52,7 @@ export default function FileIngest({ onDoc }) {
       <label className="block text-sm font-medium" htmlFor="file">
         Lesson file
       </label>
-      <input id="file" className="mt-1 block w-full text-sm" type="file" accept={ACCEPTED.join(',')} onChange={pick} />
+      <input ref={inputRef} id="file" className="mt-1 block w-full text-sm" type="file" accept={ACCEPTED.join(',')} onChange={pick} />
       <p className="mt-1 text-xs text-slate-500">
         {ACCEPTED.map((x) => x.slice(1).toUpperCase()).join(', ')} · up to {MAX_FILE_MB} MB
       </p>
@@ -52,8 +66,18 @@ export default function FileIngest({ onDoc }) {
         {state.status === 'error' && (
           <p className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">{state.message}</p>
         )}
+        {state.status === 'damaged' && (
+          <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm text-amber-950">
+            <p>Some text in this file may be damaged or missing. Missing characters will appear as � and may affect the lesson.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" className="rounded border border-slate-500 px-3 py-1" onClick={() => read(state.file, true)}>Continue with damaged text</button>
+              <button type="button" className="rounded border border-slate-500 px-3 py-1" onClick={() => inputRef.current?.click()}>Choose another file</button>
+            </div>
+          </div>
+        )}
         {state.status === 'done' && (
           <div className="mt-3 text-sm">
+            {state.damaged && <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-amber-950">Some text in this file may be damaged or missing. Missing characters appear as � and may affect the lesson.</p>}
             <p>
               <span className="font-medium">{doc.name}</span>: {doc.chunks.length.toLocaleString()} chunks,{' '}
               {doc.totalChars.toLocaleString()} characters

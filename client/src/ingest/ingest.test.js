@@ -62,6 +62,17 @@ test('rejects malformed UTF-16 with a clear ingestion error', async () => {
     [0xff, 0xfe, 0x00, 0xd8], [0xfe, 0xff, 0xd8, 0x00],
   ]) {
     await assert.rejects(ingestFile(file(Uint8Array.from(bytes), 'broken.txt')),
-      (err) => err instanceof IngestError && err.code === 'unreadable' && /encoding/i.test(err.message));
+      (err) => err instanceof IngestError && err.code === 'damaged_text');
   }
+});
+
+test('recovers damaged UTF-16 only after explicit consent', async () => {
+  for (const bytes of [[0xff, 0xfe, 0x41, 0, 0x42], [0xfe, 0xff, 0, 0x41, 0x42]]) {
+    const f = file(Uint8Array.from(bytes), 'broken.txt');
+    await fails(f, 'damaged_text');
+    assert.equal((await ingestFile(f, { allowDamagedText: true })).chunks[0].text, 'A�');
+  }
+  await fails(file(Uint8Array.of(0xff, 0xfe, 0x41), 'broken.txt'), 'damaged_text');
+  await assert.rejects(ingestFile(file(Uint8Array.of(0xff, 0xfe, 0x41), 'broken.txt'), { allowDamagedText: true }), /no readable text/i);
+  await assert.rejects(ingestFile(file(Uint8Array.of(0xff, 0xfe, 1, 0, 0x41), 'broken.txt'), { allowDamagedText: true }), /no readable text/i);
 });
