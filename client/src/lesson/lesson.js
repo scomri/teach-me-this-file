@@ -41,6 +41,6 @@ export function reduce(state, event) {
     case 'newLesson':
       return initialLesson();
     default:
-      throw new Error(`Unknown lesson event: ${event.type}`);
+      return state;
   }
 }

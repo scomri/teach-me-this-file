@@ -88,6 +88,7 @@ test('reduce does not mutate its input', () => {
   assert.deepEqual(s, frozen);
 });
 
-test('an unknown event is an error, not a silent no-op', () => {
-  assert.throws(() => reduce(initialLesson(), { type: 'nope' }), /nope/);
+test('an unknown event leaves the state as it is', () => {
+  const s = reduce(initialLesson(), { type: 'fileRead', source: doc });
+  assert.equal(reduce(s, { type: 'nope' }), s);
 });
