@@ -44,6 +44,7 @@ test('protected drafts are checked against their supplied source before display'
   const text = await (await post('teach', requestFor('opening', { chunks: [{ id: 'c1', text: 'Water freezes at zero.' }] }))).text();
   assert.doesNotMatch(text, /Water boils/);
   assert.match(validation[0].content, /unsupported|ground/i);
+  assert.match(validation[0].content, /misleading.*bounds/i);
   assert.match(validation[1].content, /Water freezes at zero/);
 });
 

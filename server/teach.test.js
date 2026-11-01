@@ -107,6 +107,7 @@ test('the prompt: the same system message for any step, fenced chunks, no key po
   const [a, b] = providerFetch.calls.map((c) => c.body.messages);
   assert.equal(a[0].role, 'system');
   assert.equal(a[0].content, b[0].content);
+  assert.match(a[0].content, /misleading.*bounds/i);
   const user = a[1].content;
   assert.equal(a.length, 2);
   assert.equal(user.match(/<chunk /g).length, 1);

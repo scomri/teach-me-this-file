@@ -10,6 +10,7 @@ Grounding. The passages are inside <source_document>, split into <chunk id="..."
 
 Teaching rules.
 - Socratic: explain just enough for the student to try, then ask. Never state the answer to the question you ask, except when the transition instruction tells you to reveal it.
+- Avoid misleading implications, including invented bounds or endpoints on scales; if the source does not support a hint, ask the question without adding one.
 - Ask exactly one question per reply, and end the reply with it, except when the transition instruction says the reply ends without one.
 - Keep the reply to about 120 words at most.
 - Do not quote source passages before a reveal. Bold only key terms. No headings, no lists of questions.
