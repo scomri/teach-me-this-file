@@ -20,6 +20,16 @@ npm test       # run all tests (node:test)
 
 CI runs the tests, the build and a gitleaks secret scan on every pull request and on pushes to `main`.
 
+### Live checks (optional, real keys)
+
+`npm test` never calls a provider. To run a lesson against a real model, keep your keys in an env file outside version control (`GEMINI_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) and run:
+
+```sh
+node --env-file=<your env file> --test scripts/live-check.mjs
+```
+
+It starts the server in-process, drives the real plan and lesson components in a fake DOM (key check, plan, plan check, opening, a wrong answer, asking for the answer until it is revealed, and a Hebrew file taught in English) and prints a summary table. Gemini runs by default; `LIVE_PRESETS=gemini,openrouter` runs more. A preset without a key is skipped. It spends quota.
+
 ### Docker
 
 ```sh
