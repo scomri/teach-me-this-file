@@ -645,7 +645,7 @@ test('HTML in a tutor reply is shown as text and creates no element', async () =
 test('every block of a tutor reply has dir="auto", tables scroll inside the message and links are safe', async () => {
   const ui = await startedWith('First.\n\nSecond.\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n[docs](https://example.com)');
   const li = ui.container.querySelector('ol > li');
-  const blocks = [...li.querySelectorAll('p, ul, ol, li, blockquote, table, pre, h1, h2, h3')].filter((el) => !el.closest('details'));
+  const blocks = [...li.querySelectorAll('p, ul, ol, li, blockquote, table, th, td, pre, h3')].filter((el) => !el.closest('details'));
   assert.ok(blocks.length >= 5);
   for (const el of blocks) assert.equal(el.getAttribute('dir'), 'auto', el.tagName);
   assert.ok(li.querySelector('table').parentElement.className.includes('overflow-x-auto'));
@@ -664,35 +664,60 @@ test('a student message stays plain text', async () => {
 });
 
 // The list is not a live region; one visually hidden polite region gets each finished reply once.
+const region = (ui) => ui.container.querySelector('[aria-live="polite"]');
+
 test('the live region receives a streamed reply once, when it finishes', async () => {
   const ui = await mount();
   await ui.click('Start');
-  const region = () => ui.container.querySelector('[aria-live="polite"]');
+  const seen = []; // the region's text after every step: it must change exactly once
+  const look = () => seen.push(region(ui).textContent.trim());
   assert.equal(ui.container.querySelectorAll('[aria-live]').length, 1);
   assert.equal(ui.container.querySelector('ol').getAttribute('aria-live'), null);
-  assert.equal(region().textContent, '');
+  look();
   assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'true'); // waiting
   const { stream } = ui.teach[0];
   await ui.feed(() => { stream.start('id-1'); stream.text('Plants '); });
-  assert.equal(region().textContent, '');
+  look();
   assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'true'); // streaming
   await ui.feed(() => { stream.text('eat **light**.'); });
-  assert.equal(region().textContent, '');
+  look();
   await ui.feed(() => stream.done());
-  assert.equal(region().textContent.trim(), 'Plants eat light.');
-  assert.notEqual(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'true');
+  look();
+  await ui.type('an unrelated render');
+  look();
+  assert.deepEqual(seen, ['', '', '', 'Plants eat light.', 'Plants eat light.']);
+  assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'false');
+  await ui.unmount();
+});
+
+test('a reply restored as finished is not announced again', async () => {
+  const started = [{ type: 'fileRead', source: doc }, received, { type: 'lessonStarted' }, { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] }, { type: 'teachChunk', text: 'Back again.' }, { type: 'teachDone' }].reduce(reduce, initialLesson());
+  function Restored() {
+    const [lesson, dispatch] = React.useReducer(reduce, started);
+    return React.createElement(Lesson, { lesson, dispatch, settings, saveCount: 0, openSettings() {} });
+  }
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(React.createElement(Restored)));
+  assert.match(container.textContent, /Back again\./);
+  assert.equal(container.querySelector('[aria-live="polite"]').textContent, '');
+  await act(() => root.unmount());
+});
+
+test('an image in a tutor reply is dropped, so nothing loads from another site', async () => {
+  const ui = await startedWith('See ![diagram](https://example.com/x.png) here.');
+  assert.equal(ui.container.querySelector('img'), null);
   await ui.unmount();
 });
 
 test('a stopped reply is announced; a failed one is not', async () => {
   const ui = await mount();
   await ui.click('Start');
-  const region = () => ui.container.querySelector('[aria-live="polite"]');
   await ui.feed(() => { ui.teach[0].stream.start('id-1'); ui.teach[0].stream.text('Plants '); });
   await ui.click('Stop');
-  assert.equal(region().textContent.trim(), 'Plants');
+  assert.equal(region(ui).textContent.trim(), 'Plants');
   await ui.click('Regenerate');
   await ui.feed(() => { ui.teach[1].stream.start('id-2'); ui.teach[1].stream.text('Half'); ui.teach[1].stream.fail('rate_limited'); });
-  assert.equal(region().textContent.trim(), '');
+  assert.equal(region(ui).textContent.trim(), '');
   await ui.unmount();
 });

@@ -20,20 +20,22 @@ const EVALUATOR_NOT_FOUND = "The evaluator model wasn't found or isn't available
 const FALLBACK = "The tutor couldn't reply. Try again.";
 
 // Tutor text is Markdown with raw HTML off (react-markdown shows it as text), so no sanitizer is needed.
-// Every block gets dir="auto" so a Hebrew reply reads right to left; `strong` and `blockquote` carry their
-// own class names for the highlighter and "From your file" styling to hang on.
-const auto = (Tag, extra = {}) => ({ node, ...props }) => <Tag dir="auto" {...extra} {...props} />;
-const MARKDOWN = {
-  p: auto('p'), ul: auto('ul', { className: 'list-disc ps-6' }), ol: auto('ol', { className: 'list-decimal ps-6' }), li: auto('li'),
-  h1: auto('h3', { className: 'font-semibold' }), h2: auto('h3', { className: 'font-semibold' }), h3: auto('h3', { className: 'font-semibold' }),
-  h4: auto('h4', { className: 'font-semibold' }), h5: auto('h5', { className: 'font-semibold' }), h6: auto('h6', { className: 'font-semibold' }),
-  pre: auto('pre', { className: 'overflow-x-auto' }),
-  strong: ({ node, ...props }) => <strong className="tutor-key-term" {...props} />,
-  blockquote: auto('blockquote', { className: 'tutor-source-quote' }),
-  a: ({ node, ...props }) => <a target="_blank" rel="noopener noreferrer" className="underline" {...props} />,
+// Every block gets dir="auto" so a Hebrew reply reads right to left. `strong` and `blockquote` carry class
+// names that the key-term highlighter and the "From your file" quote box will be styled on once the colour
+// tokens land; images are dropped, so a reply cannot load anything from another site.
+const element = (Tag, props) => ({ node, ...rest }) => <Tag {...props} {...rest} />;
+const block = (Tag, className) => element(Tag, { dir: 'auto', className });
+const heading = (Tag) => block(Tag, 'font-semibold');
+const COMPONENTS = {
+  p: block('p'), li: block('li'), ul: block('ul', 'list-disc ps-6'), ol: block('ol', 'list-decimal ps-6'),
+  h1: heading('h3'), h2: heading('h3'), h3: heading('h3'), h4: heading('h4'), h5: heading('h5'), h6: heading('h6'),
+  pre: block('pre', 'overflow-x-auto'), th: block('th'), td: block('td'),
+  blockquote: block('blockquote', 'tutor-source-quote'),
+  strong: element('strong', { className: 'tutor-key-term' }),
+  a: element('a', { target: '_blank', rel: 'noopener noreferrer', className: 'underline' }),
   table: ({ node, ...props }) => <div className="overflow-x-auto"><table dir="auto" {...props} /></div>,
 };
-const Reply = ({ children }) => <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN}>{children}</Markdown>;
+const Reply = ({ children }) => <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS} disallowedElements={['img']}>{children}</Markdown>;
 
 // The lesson chat. The messages and progress live in the lesson state (`lesson`, `dispatch`); this
 // component keeps the requests in flight, the draft and the last error. It dispatches events and renders state.
@@ -237,8 +239,8 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
           }
           const pages = sourcePages(m, source);
           return (
-            <li key={i} className="rounded border border-slate-200 p-3" aria-busy={m.status === 'streaming' || undefined}>
-              {m.text ? <div className="space-y-2"><Reply>{m.text}</Reply></div> : m.status === 'streaming' && <p dir="auto">Preparing reply…</p>}
+            <li key={i} className="min-w-0 rounded border border-slate-200 p-3" aria-busy={m.status === 'streaming'}>
+              {m.text ? <div className="min-w-0 space-y-2"><Reply>{m.text}</Reply></div> : m.status === 'streaming' && <p dir="auto">Preparing reply…</p>}
               {m.status === 'stopped' && <p className="mt-1 text-xs text-slate-500">Stopped.</p>}
               {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-slate-600">
                 <summary>Source{pages ? `: ${pages}` : ' passages'}</summary>
