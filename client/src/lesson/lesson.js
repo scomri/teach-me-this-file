@@ -3,9 +3,9 @@
 //   progress null  -> plan review
 // Teaching events act on the last tutor message, which is the one being streamed.
 // There is no phase field; the screen follows from these two.
-import { detectScript } from '../ingest/script.js';
+import { textDir } from '../ingest/script.js';
 
-const direction = (doc) => (detectScript(doc.chunks.map((c) => c.text).join('\n')).rtl ? 'rtl' : 'ltr');
+const direction = (doc) => textDir(doc.chunks.map((c) => c.text).join('\n'));
 
 const noConstraints = () => ({ language: null, minutes: null, audience: null, style: null });
 

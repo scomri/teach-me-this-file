@@ -60,17 +60,17 @@ export default function App() {
   }
   return (
     <main className="mx-auto max-w-xl p-8">
-      <h1 className="text-2xl font-semibold">Teach Me This File</h1>
+      <h1 className="heading text-2xl">Teach Me This File</h1>
       <ModelSettings
         ref={settingsRef}
         onSettings={setSettings}
         onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
       />
 
-      {lessonNotice && <p role="status" className="mt-2 text-sm text-amber-900">{lessonNotice}</p>}
+      {lessonNotice && <p role="status" className="mt-2 text-sm text-warning">{lessonNotice}</p>}
       {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
-      {restored && lesson.source && <p className="mt-2 text-sm text-slate-600">Restored your lesson on {lesson.source.name}.</p>}
-      {(lesson.source || lesson.teacher.prompt) && <button type="button" className="mt-2 rounded border border-slate-300 px-3 py-1 text-sm" onClick={newLesson}>New lesson</button>}
+      {restored && lesson.source && <p className="mt-2 text-sm text-muted">Restored your lesson on {lesson.source.name}.</p>}
+      {(lesson.source || lesson.teacher.prompt) && <button type="button" className="btn btn-secondary mt-2 text-sm" onClick={newLesson}>New lesson</button>}
       {loaded && lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
       {loaded && lesson.source && settings && !lesson.progress && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
     </main>

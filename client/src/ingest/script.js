@@ -12,3 +12,5 @@ export function detectScript(text) {
   if (!n) return { script: 'other', rtl: false };
   return { script, rtl: script === 'hebrew' || script === 'arabic' };
 }
+
+export const textDir = (text) => (detectScript(text).rtl ? 'rtl' : 'ltr');
