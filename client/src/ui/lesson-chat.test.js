@@ -633,6 +633,17 @@ test('bold and a quote in a tutor reply render as strong and blockquote', async 
   await ui.unmount();
 });
 
+// The quote box's rule sits on the blockquote's inline-start side, so the blockquote needs the quote's own
+// direction: dir="auto" would skip its paragraph (which sets its own dir) and fall back to left to right.
+test('a quote takes the direction of its text', async () => {
+  const ui = await startedWith('התשובה:\n\n> פוטוסינתזה הופכת אור לסוכר.\n\nThen:\n\n> Light becomes sugar.');
+  const [hebrew, english] = ui.container.querySelectorAll('blockquote');
+  assert.equal(hebrew.getAttribute('dir'), 'rtl');
+  assert.equal(english.getAttribute('dir'), 'ltr');
+  assert.ok(hebrew.className.includes('tutor-source-quote'));
+  await ui.unmount();
+});
+
 test('HTML in a tutor reply is shown as text and creates no element', async () => {
   const ui = await startedWith('Look: <img src=x onerror=alert(1)> and <script>alert(2)</script> done.');
   assert.equal(ui.container.querySelector('img'), null);

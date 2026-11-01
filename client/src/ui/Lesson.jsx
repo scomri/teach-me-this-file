@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
+import { detectScript } from '../ingest/script.js';
 import { reduce } from '../lesson/lesson.js';
 import { checkPlan, sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
@@ -22,16 +23,19 @@ const FALLBACK = "The tutor couldn't reply. Try again.";
 // Tutor text is Markdown with raw HTML off (react-markdown shows it as text), so no sanitizer is needed.
 // Every block gets dir="auto" so a Hebrew reply reads right to left (lists use inside markers because a
 // container's auto direction ignores children that set their own dir, so the item decides). `strong` and `blockquote` carry class
-// names that the key-term highlighter and the "From your file" quote box will be styled on once the colour
-// tokens land; images are dropped, so a reply cannot load anything from another site.
+// names that index.css styles as the key-term highlighter and the "From your file" quote box; images are
+// dropped, so a reply cannot load anything from another site.
 const element = (Tag, props) => ({ node, ...rest }) => <Tag {...props} {...rest} />;
 const block = (Tag, className) => element(Tag, { dir: 'auto', className });
-const heading = (Tag) => block(Tag, 'font-semibold');
+const heading = (Tag) => block(Tag, 'font-black tracking-tight');
+// A quote's direction comes from its text: dir="auto" would skip its paragraphs, which set their own.
+const text = (node) => node.value ?? node.children?.map(text).join('') ?? '';
+const quote = ({ node, ...rest }) => <blockquote {...rest} dir={detectScript(text(node)).rtl ? 'rtl' : 'ltr'} className="tutor-source-quote" />;
 const COMPONENTS = {
   p: block('p'), li: block('li'), ul: block('ul', 'list-disc list-inside'), ol: block('ol', 'list-decimal list-inside'),
   h1: heading('h3'), h2: heading('h3'), h3: heading('h3'), h4: heading('h4'), h5: heading('h5'), h6: heading('h6'),
   pre: block('pre', 'overflow-x-auto'), th: block('th'), td: block('td'),
-  blockquote: block('blockquote', 'tutor-source-quote'),
+  blockquote: quote,
   strong: element('strong', { className: 'tutor-key-term' }),
   a: element('a', { target: '_blank', rel: 'noopener noreferrer', className: 'underline' }),
   table: ({ node, ...props }) => <div className="overflow-x-auto"><table dir="auto" {...props} /></div>,
@@ -220,9 +224,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   return (
     <section className="mt-6">
-      <h2 dir="auto" className="text-xl font-semibold">{plan.title}</h2>
-      <p className="mt-1 text-sm text-slate-600">Step {index + 1} of {plan.steps.length}</p>
-      {!plan.validated && <div role="status" className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+      <h2 dir="auto" className="text-xl font-black tracking-tight">{plan.title}</h2>
+      <p className="mt-1 text-sm text-muted">Step {index + 1} of {plan.steps.length}</p>
+      {!plan.validated && <div role="status" className="mt-3 notice notice-warning text-sm">
         <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
         <button className="underline disabled:opacity-40" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
         {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}</p>}
@@ -232,18 +236,18 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
         {messages.map((m, i) => {
           if (m.role === 'student') {
             return (
-              <li key={i} className="rounded border border-slate-200 bg-slate-50 p-3">
-                <p className="text-xs font-medium text-slate-500">You</p>
+              <li key={i} className="rounded-md border border-border bg-canvas p-3">
+                <p className="text-xs font-medium text-muted">You</p>
                 <p dir="auto" className="whitespace-pre-wrap">{m.text}</p>
               </li>
             );
           }
           const pages = sourcePages(m, source);
           return (
-            <li key={i} className="min-w-0 rounded border border-slate-200 p-3" aria-busy={m.status === 'streaming'}>
+            <li key={i} className="min-w-0 rounded-md border border-border bg-surface p-3" aria-busy={m.status === 'streaming'}>
               {m.text ? <div className="min-w-0 space-y-2"><Reply>{m.text}</Reply></div> : m.status === 'streaming' && <p dir="auto">Preparing reply…</p>}
-              {m.status === 'stopped' && <p className="mt-1 text-xs text-slate-500">Stopped.</p>}
-              {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-slate-600">
+              {m.status === 'stopped' && <p className="mt-1 text-xs text-muted">Stopped.</p>}
+              {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-muted">
                 <summary>Source{pages ? `: ${pages}` : ' passages'}</summary>
                 {source.chunks.filter((c) => m.chunkIds.includes(c.id)).map((c) => <p key={c.id} dir="auto" className="mt-2 whitespace-pre-wrap">{c.text}</p>)}
               </details>}
@@ -253,33 +257,33 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       </ol>
       <div className="sr-only" aria-live="polite"><Reply>{announced}</Reply></div>
 
-      {evaluating && <p role="status" className="mt-3 text-sm text-slate-500">Thinking…</p>}
+      {evaluating && <p role="status" className="mt-3 text-sm text-muted">Thinking…</p>}
 
       {errorCode && (last?.status === 'failed' || pendingAnswer) && (
-        <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+        <p role="alert" className="mt-3 notice notice-danger text-sm">
           {(errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
         </p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {streaming && <button className="rounded border border-slate-300 px-3 py-1" onClick={stop}>Stop</button>}
-        {(last?.status === 'failed' || (pendingAnswer && !evaluating)) && <button className="rounded bg-slate-900 px-3 py-1 text-white" onClick={pendingAnswer ? retryAnswer : again}>Retry</button>}
-        {['done', 'stopped'].includes(last?.status) && <button className="rounded border border-slate-300 px-3 py-1" onClick={again}>Regenerate</button>}
-        {canContinue && <button className="rounded bg-slate-900 px-3 py-1 text-white" onClick={proceed}>Continue</button>}
+        {streaming && <button className="btn btn-secondary" onClick={stop}>Stop</button>}
+        {(last?.status === 'failed' || (pendingAnswer && !evaluating)) && <button className="btn btn-primary" onClick={pendingAnswer ? retryAnswer : again}>Retry</button>}
+        {['done', 'stopped'].includes(last?.status) && <button className="btn btn-secondary" onClick={again}>Regenerate</button>}
+        {canContinue && <button className="btn btn-primary" onClick={proceed}>Continue</button>}
       </div>
 
       <div className="mt-4">
         <label className="block text-sm font-medium" htmlFor="answer">Your answer</label>
         <textarea
-          id="answer" className="mt-1 w-full rounded border border-slate-300 p-2 disabled:opacity-40" rows={2}
+          id="answer" className="field mt-1 w-full p-2 disabled:opacity-40" rows={2}
           value={draft} onChange={(e) => setDraft(e.target.value)} disabled={!canAnswer} aria-describedby="answer-count"
         />
         <div className="mt-1 flex items-center justify-between gap-2">
-          <p id="answer-count" className={`text-sm ${over ? 'text-red-700' : 'text-slate-500'}`}>
+          <p id="answer-count" className={`text-sm ${over ? 'text-danger' : 'text-muted'}`}>
             {draft.length} / {MAX_ANSWER_CHARS}{over && ' (too long, shorten it to send)'}
           </p>
-          <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={send} disabled={!canAnswer || !draft.trim() || over}>Send</button>
+          <button className="btn btn-primary" onClick={send} disabled={!canAnswer || !draft.trim() || over}>Send</button>
         </div>
       </div>
     </section>

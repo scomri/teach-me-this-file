@@ -90,7 +90,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       <label className="block text-sm font-medium" htmlFor="prompt">What should the lesson cover?</label>
       <textarea
         id="prompt"
-        className="mt-1 w-full rounded border border-slate-300 p-2"
+        className="field mt-1 w-full p-2"
         rows={3}
         maxLength={MAX_PROMPT_CHARS}
         value={prompt}
@@ -98,23 +98,23 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         placeholder="For example: teach the main ideas in 15 minutes, in English, for 10th graders"
       />
       <div className="mt-2 flex items-center gap-2">
-        <button className="rounded bg-slate-900 px-3 py-1 text-white disabled:opacity-40" onClick={() => runPlan()} disabled={planning || noKey}>
+        <button className="btn btn-primary" onClick={() => runPlan()} disabled={planning || noKey}>
           {planning ? 'Planning…' : 'Plan'}
         </button>
-        {planning && <button className="rounded border border-slate-300 px-3 py-1" onClick={cancel}>Cancel</button>}
-        {noKey && <span className="text-sm text-slate-500">Add an API key in the model settings first.</span>}
+        {planning && <button className="btn btn-secondary" onClick={cancel}>Cancel</button>}
+        {noKey && <span className="text-sm text-muted">Add an API key in the model settings first.</span>}
       </div>
 
       <div aria-live="polite">
         {state.flagged?.length > 0 && <p role="alert">Check questions may reveal answers in steps {state.flagged.join(', ')}. Regenerate the whole plan.</p>}
         {status === 'key_rejected' && (
-          <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+          <p role="alert" className="mt-3 notice notice-danger text-sm">
             Your key was rejected.{' '}
             <button className="underline" onClick={openSettings}>Open Settings</button>
           </p>
         )}
         {['error', 'check_key_rejected'].includes(status) && (
-          <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
+          <p role="alert" className="mt-3 notice notice-danger text-sm">
             {state.code === 'invalid_key' ? 'Your key was rejected.' : state.code === 'model_not_found' && state.role === 'evaluator' ? "The evaluator model wasn't found or isn't available for this key. Check the model settings." : MESSAGES[state.code] ?? FALLBACK}{' '}
             {['invalid_key', 'model_not_found'].includes(state.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}
           </p>
