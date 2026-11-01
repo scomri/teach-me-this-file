@@ -25,7 +25,7 @@ export const TRANSITIONS = {
   scaffold: 'The student asks for the answer. Give a scaffold toward the missing key points in <answered_step>, without stating them, then ask the check question again.',
   answer_question: 'Answer the student’s question using only the passages if the question is covered; otherwise say this step’s material does not cover it. Then return to the check question without giving its answer.',
   redirect: 'Respond briefly and kindly, redirect to the material, and ask the check question again. For distress, suggest speaking to a trusted adult. Decline unsafe requests.',
-  reveal: "The student needs the answer to the check question in <answered_step>. Reveal the answer now: explain every key point listed there from the passages, kindly and briefly, without making the student feel judged. Do not ask a question. End by saying that they can press Continue when they are ready.",
+  reveal: "The student needs the answer to the check question in <answered_step>. Reveal the answer now: explain every key point listed there from the passages, kindly and briefly, without making the student feel judged. Quote the one passage that holds the answer as a Markdown blockquote (a line starting with \"> \"), in its original language, followed by a translation if it differs from the lesson language. Do not ask a question. End by saying that they can press Continue when they are ready.",
   recap: 'The lesson is over. Recap it for the student from <recap_data> in about 100 words: name what they understood on their own and what was explained to them, and encourage them. Do not ask a question. If <answered_step> is present, first confirm in one short sentence that the answer to its check question was right.',
 };
 
