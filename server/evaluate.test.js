@@ -79,7 +79,7 @@ test('a valid request answers { evaluation } and asks the evaluator model for st
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { evaluation: { intent: 'answer', keyPointsMet: [1], relevantChunkIds: ['c1'] } });
   const { body } = providerFetch.calls[0];
-  assert.match(body.model, /flash-lite/); // the evaluator model of the preset
+  assert.equal(body.model, 'gemini-3.6-flash'); // the evaluator model of the preset
   assert.equal(body.stream, false);
   assert.equal(body.temperature, 0);
   assert.equal(body.response_format.type, 'json_schema');
