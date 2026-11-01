@@ -117,23 +117,48 @@ async function mount(doc, prompt, settings) {
     await tick();
   });
   const tutorMessages = () => [...container.querySelectorAll('li')].filter((li) => !/^You/.test(li.textContent));
-  return { container, button, click, until, type, idle, tutorMessages, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
+  // A tutor message also holds its Source passages in a <details>; measure the reply without them.
+  const replyText = (li) => { const copy = li.cloneNode(true); copy.querySelectorAll('details').forEach((d) => d.remove()); return copy.textContent; };
+  return { container, button, click, until, type, idle, tutorMessages, replyText, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
 }
 
 // Model-dependent formatting: logged, never failed.
 function observe(ui) {
   const replies = ui.tutorMessages();
-  const raw = replies.filter((li) => /\*\*|^\s*>/m.test(li.textContent)).length;
+  const raw = replies.filter((li) => /\*\*|^\s*>/m.test(ui.replyText(li))).length;
   const strong = ui.container.querySelectorAll('li strong').length;
   const quotes = ui.container.querySelectorAll('li blockquote').length;
   const auto = replies.every((li) => li.querySelector('[dir="auto"]'));
   return `replies ${replies.length}, raw markdown in ${raw}, strong ${strong}, quotes ${quotes}, dir=auto ${auto ? 'yes' : 'no'}`;
 }
 
+const hebrewLetters = (s) => (s.match(/[֐-׿]/g) ?? []).length;
+
 async function send(ui, text) {
   await ui.type(text);
   await ui.click('Send');
   await ui.until(`reply to "${text}"`, () => ui.idle() || ui.button('Continue'));
+}
+
+async function startLesson(ui) {
+  await ui.click('Plan');
+  await ui.until('plan', () => ui.button('Check plan') || ui.button('Start'));
+  assert.match(ui.text(), /\d+ steps?/);
+  if (ui.button('Check plan')) {
+    await ui.click('Check plan');
+    await ui.until('plan check', () => ui.button('Start') && !ui.button('Start').disabled);
+  }
+  await ui.click('Start');
+  await ui.until('opening reply', ui.idle);
+  assert.ok(ui.replyText(ui.tutorMessages().at(-1)).trim(), 'opening reply is empty');
+}
+
+// One wrong answer, then asking for the answer until Continue appears.
+async function reveal(ui, wrongAnswer) {
+  await send(ui, wrongAnswer);
+  assert.ok(!ui.button('Continue'), 'a wrong first answer must not reveal');
+  for (let asks = 0; asks < 3 && !ui.button('Continue'); asks++) await send(ui, 'I give up, just tell me the answer.');
+  assert.ok(ui.button('Continue'), 'asking for the answer twice reveals it');
 }
 
 for (const preset of presets) {
@@ -155,41 +180,24 @@ for (const preset of presets) {
     const doc = await ingestFile(new File([EN_TEXT], 'photosynthesis.md'));
     const ui = await mount(doc, 'Teach this in 5 minutes.', settings);
     try {
-      await ui.click('Plan');
-      await ui.until('plan', () => ui.button('Check plan') || ui.button('Start'));
-      assert.match(ui.text(), /\d+ steps?/);
-      if (ui.button('Check plan')) {
-        await ui.click('Check plan');
-        await ui.until('plan check', () => ui.button('Start') && !ui.button('Start').disabled);
-      }
-      await ui.click('Start');
-      await ui.until('opening reply', ui.idle);
-      assert.ok(ui.tutorMessages().at(-1)?.textContent.trim(), 'opening reply is empty');
-
-      await send(ui, 'It is because the moon is made of cheese.');
-      assert.ok(!ui.button('Continue'), 'a wrong first answer must not reveal');
-      for (let asks = 0; asks < 3 && !ui.button('Continue'); asks++) await send(ui, 'I give up, just tell me the answer.');
-      assert.ok(ui.button('Continue'), 'asking for the answer twice reveals it');
+      await startLesson(ui);
+      await reveal(ui, 'It is because the moon is made of cheese.');
       return observe(ui);
     } finally { await ui.unmount(); }
   }));
 
-  test(`${preset}: Hebrew file taught in English, plan and opening`, { skip }, () => timed({ preset, check: 'he plan' }, async () => {
+  test(`${preset}: Hebrew file taught in English, plan to reveal`, { skip }, () => timed({ preset, check: 'he lesson' }, async () => {
     const doc = await ingestFile(new File([HE_TEXT], 'water-cycle.txt'));
     const ui = await mount(doc, 'Teach this in English in 5 minutes.', settings);
     try {
-      await ui.click('Plan');
-      await ui.until('plan', () => ui.button('Check plan') || ui.button('Start'));
-      if (ui.button('Check plan')) {
-        await ui.click('Check plan');
-        await ui.until('plan check', () => ui.button('Start') && !ui.button('Start').disabled);
-      }
-      await ui.click('Start');
-      await ui.until('opening reply', ui.idle);
-      const reply = ui.tutorMessages().at(-1)?.textContent ?? '';
-      assert.ok(reply.trim(), 'opening reply is empty');
-      const hebrew = (reply.match(/[֐-׿]/g) ?? []).length;
-      return `${observe(ui)}, Hebrew letters in opening ${hebrew}`;
+      await startLesson(ui);
+      const opening = ui.replyText(ui.tutorMessages().at(-1));
+      await reveal(ui, 'Because the moon pulls the water up.');
+      // The reveal should quote the Hebrew passage with an English translation; the rest stays English.
+      const last = ui.tutorMessages().at(-1);
+      const quote = [...last.querySelectorAll('blockquote')].map((b) => b.textContent).join(' ');
+      const body = ui.replyText(last).replace(quote, '');
+      return `${observe(ui)}, Hebrew letters: opening ${hebrewLetters(opening)}, reveal quote ${hebrewLetters(quote)} (Latin ${(quote.match(/[a-z]/gi) ?? []).length}), reveal outside quote ${hebrewLetters(body)}`;
     } finally { await ui.unmount(); }
   }));
 }
