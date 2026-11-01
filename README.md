@@ -31,7 +31,15 @@ docker run --rm -p 8080:8080 teach-me-this-file:local   # http://localhost:8080
 
 Live: https://teach-me-this-file-630387171976.europe-west1.run.app
 
-Every push to `main` deploys automatically. The `deploy` job in `.github/workflows/ci.yml` runs only after tests, the build and the secret scan pass, and signs in to Google Cloud with Workload Identity Federation, so GitHub stores no cloud key. The URL stays the same; each deploy adds a new Cloud Run revision. See [ADR 0004](docs/adr/0004-continuous-deploy.md).
+Every push to `main` builds and deploys automatically. The `deploy` job in `.github/workflows/ci.yml` runs only after tests, the build and the secret scan pass, and signs in to Google Cloud with Workload Identity Federation, so GitHub stores no cloud key. The URL stays the same; each deploy adds a new Cloud Run revision. Production follows it only while traffic is configured for the latest revision. See [ADR 0004](docs/adr/0004-continuous-deploy.md).
+
+After a rollback or a no-traffic test deployment, check the production traffic target; a successful health check alone can reach an older revision:
+
+```sh
+gcloud run services describe teach-me-this-file --region europe-west1 --format='yaml(spec.traffic,status.traffic,status.latestReadyRevisionName)'
+```
+
+When ready to send production traffic back to the latest ready revision, use `gcloud run services update-traffic teach-me-this-file --region europe-west1 --to-latest`. This changes the live site and restores automatic routing for subsequent deploys.
 
 Cloud Build builds the `Dockerfile`, and `.gcloudignore` limits the upload to the build inputs. The job runs the command below, which also works as a manual fallback from a clean checkout of `main` with `gcloud` authenticated against the project:
 
