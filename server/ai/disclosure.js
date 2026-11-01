@@ -10,7 +10,7 @@ const format = { type: 'json_schema', json_schema: { name: 'disclosure_check', s
   },
 } } };
 
-export const validationModel = (preset, teacher, evaluator) => preset === 'gemini'
+export const validationModel = (preset, teacher, evaluator) => ['gemini', 'anthropic'].includes(preset)
   ? teacher?.trim() || PRESETS[preset].teacher
   : evaluator?.trim() || PRESETS[preset].evaluator;
 

@@ -55,7 +55,7 @@ async function serve(t, providerFetch) {
   return async (path, body, key = 'key') => fetch(`http://127.0.0.1:${server.address().port}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key && { 'X-Api-Key': key }) }, body: JSON.stringify(body) });
 }
 
-test('Gemini uses its configured teacher for plan and reply checks; other presets keep their evaluator', async (t) => {
+test('Gemini and Anthropic use their configured teacher for checks; OpenAI keeps its evaluator', async (t) => {
   const calls = [];
   const post = await serve(t, async (_, init) => {
     const body = JSON.parse(init.body); calls.push(body);
@@ -69,6 +69,12 @@ test('Gemini uses its configured teacher for plan and reply checks; other preset
   assert.equal((await post('plan/check', { ...settings, steps: [{ checkQuestion: 'Why?', expected: ['energy'] }] })).status, 200);
   assert.equal(calls.at(-1).model, 'teacher-model');
   await (await post('teach', requestFor('opening', settings))).text();
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  await (await post('teach', requestFor('opening', { ...settings, preset: 'anthropic' }))).text();
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  assert.equal((await post('plan/check', { ...settings, preset: 'anthropic', steps: [{ checkQuestion: 'Why?', expected: ['energy'] }] })).status, 200);
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  assert.equal((await post('plan', { ...settings, preset: 'anthropic', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] })).status, 200);
   assert.equal(calls.at(-1).model, 'teacher-model');
   await (await post('teach', requestFor('opening', { ...settings, preset: 'openai' }))).text();
   assert.equal(calls.at(-1).model, 'grader-model');
