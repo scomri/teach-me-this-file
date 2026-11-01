@@ -55,6 +55,25 @@ async function serve(t, providerFetch) {
   return async (path, body, key = 'key') => fetch(`http://127.0.0.1:${server.address().port}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(key && { 'X-Api-Key': key }) }, body: JSON.stringify(body) });
 }
 
+test('Gemini uses its configured teacher for plan and reply checks; other presets keep their evaluator', async (t) => {
+  const calls = [];
+  const post = await serve(t, async (_, init) => {
+    const body = JSON.parse(init.body); calls.push(body);
+    if (body.stream) return streamText('A safe question?');
+    if (body.response_format?.json_schema?.name === 'lesson_plan') return wrapped(plan);
+    return wrapped({ flagged: [], uncertain: false });
+  });
+  const settings = { preset: 'gemini', teacher: 'teacher-model', evaluator: 'grader-model' };
+  assert.equal((await post('plan', { ...settings, prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] })).status, 200);
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  assert.equal((await post('plan/check', { ...settings, steps: [{ checkQuestion: 'Why?', expected: ['energy'] }] })).status, 200);
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  await (await post('teach', requestFor('opening', settings))).text();
+  assert.equal(calls.at(-1).model, 'teacher-model');
+  await (await post('teach', requestFor('opening', { ...settings, preset: 'openai' }))).text();
+  assert.equal(calls.at(-1).model, 'grader-model');
+});
+
 test('every protected transition fails closed on malformed validation, with localized fallbacks', async (t) => {
   const calls = [];
   const post = await serve(t, async (_, init) => { const body = JSON.parse(init.body); calls.push(body); return body.stream ? streamText('SECRET DRAFT') : wrapped({ uncertain: true }); });
@@ -71,7 +90,7 @@ test('every protected transition fails closed on malformed validation, with loca
     if (body.transition === 'redirect') assert.match(text, /شخص بالغ/);
   }
   assert.equal(calls.length, 12);
-  assert.ok(calls.filter((c) => !c.stream).every((c) => c.model === 'checker'));
+  assert.ok(calls.filter((c) => !c.stream).every((c) => c.model === 'gemini-3.8-flash'));
 });
 
 test('approved drafts appear only after validation; reveal and recap skip the check', async (t) => {

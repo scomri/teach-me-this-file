@@ -1,4 +1,5 @@
 import { EVALUATE_OUTPUT_TOKENS } from '../../shared/limits.js';
+import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from './adapter.js';
 import { providerOutcome } from './errors.js';
 import { neutralize } from './prompts/plan.js';
@@ -8,6 +9,10 @@ const format = { type: 'json_schema', json_schema: { name: 'disclosure_check', s
     uncertain: { type: 'boolean' }, flagged: { type: 'array', items: { type: 'integer' } },
   },
 } } };
+
+export const validationModel = (preset, teacher, evaluator) => preset === 'gemini'
+  ? teacher?.trim() || PRESETS[preset].teacher
+  : evaluator?.trim() || PRESETS[preset].evaluator;
 
 // One result per candidate: a missing, uncertain or malformed judgment is never approval.
 export async function checkDisclosure({ preset, apiKey, model, candidates, signal, fetchImpl, retry }) {

@@ -3,7 +3,7 @@ import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TU
 import { PRESETS } from '../../shared/presets.js';
 import { protectsUnansweredPoints } from '../../shared/transitions.js';
 import { chatCompletion } from '../ai/adapter.js';
-import { checkDisclosure } from '../ai/disclosure.js';
+import { checkDisclosure, validationModel } from '../ai/disclosure.js';
 import { providerTelemetry } from '../ai/telemetry.js';
 import { CAPS, MAX_POINTS } from '../ai/plan.js';
 import { providerOutcome } from '../ai/errors.js';
@@ -150,7 +150,7 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       if (!any || (protectedReply && !complete)) return stream.end('unreachable');
       if (protectedReply) {
         let flagged = null;
-        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.evaluator, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints, source: request.chunks, ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }) }] }); } catch { /* fail closed */ }
+        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: validationModel(request.preset, request.model, request.evaluator), signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints, source: request.chunks, ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }) }] }); } catch { /* fail closed */ }
         if (stream.signal.aborted) return;
         stream.write({ text: flagged?.length === 0 ? draft : fallback(request) });
       }

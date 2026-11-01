@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_STEPS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
-import { checkDisclosure } from '../ai/disclosure.js';
+import { checkDisclosure, validationModel } from '../ai/disclosure.js';
 import { providerOutcome } from '../ai/errors.js';
 import { CAPS, MAX_POINTS, PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
 import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
@@ -74,9 +74,9 @@ function validateRequest(body) {
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
   router.post('/plan/check', async (req, res) => {
-    const { preset, evaluator, steps } = req.body ?? {};
+    const { preset, teacher, evaluator, steps } = req.body ?? {};
     const invalidCheck = () => res.status(400).json({ code: 'invalid_request' });
-    if (!Object.hasOwn(PRESETS, preset) || (evaluator !== undefined && (typeof evaluator !== 'string' || evaluator.length > MAX_MODEL_CHARS))) return invalidCheck();
+    if (!Object.hasOwn(PRESETS, preset) || [teacher, evaluator].some((v) => v !== undefined && (typeof v !== 'string' || v.length > MAX_MODEL_CHARS))) return invalidCheck();
     if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) return invalidCheck();
     for (const s of steps) {
       if (typeof s?.checkQuestion !== 'string' || !s.checkQuestion.trim() || s.checkQuestion.length > CAPS.question) return invalidCheck();
@@ -89,7 +89,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     const disconnect = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', disconnect);
     try {
-      const flagged = await checkDisclosure({ preset, apiKey, model: evaluator?.trim() || PRESETS[preset].evaluator, signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
+      const flagged = await checkDisclosure({ preset, apiKey, model: validationModel(preset, teacher, evaluator), signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
       if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged });
       if (flagged === null) return res.status(502).json({ code: 'plan_check_failed' });
       return res.json({ flagged });
@@ -126,7 +126,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
           const { plan, constraints, coverage, coverageNote, documentLanguage } = result;
           if (!plan) return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
           let flagged = null;
-          try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.evaluator, signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
+          try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: validationModel(request.preset, request.model, request.evaluator), signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
           if (typeof flagged === 'string') return fail(flagged);
           if (flagged === null) return res.status(502).json({ code: 'plan_check_failed', ...(lastFlagged.length && { flagged: lastFlagged }) });
           if (!flagged.length) return res.json({ plan: { ...plan, validated: true }, constraints, coverage, coverageNote, documentLanguage });

@@ -51,7 +51,7 @@ export async function requestPlan({ doc, prompt, settings, wholeFile = false, si
 export async function checkPlan({ plan, settings, signal }, fetchImpl = fetch) {
   let response;
   try {
-    response = await fetchImpl('/api/plan/check', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey }, body: JSON.stringify({ preset: settings.preset, evaluator: settings.evaluator, steps: plan.steps.map(({ checkQuestion, expected }) => ({ checkQuestion, expected })) }), signal });
+    response = await fetchImpl('/api/plan/check', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey }, body: JSON.stringify({ preset: settings.preset, teacher: settings.teacher, evaluator: settings.evaluator, steps: plan.steps.map(({ checkQuestion, expected }) => ({ checkQuestion, expected })) }), signal });
     const body = await response.json();
     if (!response.ok || !Array.isArray(body.flagged)) throw new PlanError(body.code ?? 'plan_invalid');
     if (body.flagged.length) { const error = new PlanError('plan_invalid'); error.flagged = body.flagged.map((i) => i + 1); throw error; }
