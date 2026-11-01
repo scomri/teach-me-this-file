@@ -43,7 +43,7 @@ export async function requestPlan({ doc, prompt, settings, wholeFile = false, si
     if (signal?.aborted) throw error; // an abort while reading the body is not an empty reply
     body = {};
   }
-  if (!response.ok) { const error = new PlanError(body.code ?? (response.status === 413 ? 'document_too_long' : 'unreachable')); error.flagged = body.flagged; throw error; }
+  if (!response.ok) { const error = new PlanError(body.code ?? (response.status === 413 ? 'document_too_long' : 'unreachable')); error.flagged = body.flagged; error.role = body.role; throw error; }
   if (!body.constraints || (body.coverage !== 'none' && !body.plan)) throw new PlanError('plan_invalid');
   return body;
 }
@@ -53,7 +53,7 @@ export async function checkPlan({ plan, settings, signal }, fetchImpl = fetch) {
   try {
     response = await fetchImpl('/api/plan/check', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': settings.apiKey }, body: JSON.stringify({ preset: settings.preset, teacher: settings.teacher, evaluator: settings.evaluator, steps: plan.steps.map(({ checkQuestion, expected }) => ({ checkQuestion, expected })) }), signal });
     const body = await response.json();
-    if (!response.ok || !Array.isArray(body.flagged)) throw new PlanError(body.code ?? 'plan_invalid');
+    if (!response.ok || !Array.isArray(body.flagged)) { const error = new PlanError(body.code ?? 'plan_invalid'); error.role = body.role; throw error; }
     if (body.flagged.length) { const error = new PlanError('plan_invalid'); error.flagged = body.flagged.map((i) => i + 1); throw error; }
   } catch (error) { if (signal?.aborted || error instanceof PlanError) throw error; throw new PlanError('plan_check_failed'); }
 }

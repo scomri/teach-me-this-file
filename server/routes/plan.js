@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_STEPS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
-import { checkDisclosure, validationModel } from '../ai/disclosure.js';
+import { checkDisclosure, validationModel, validationRole } from '../ai/disclosure.js';
 import { providerOutcome } from '../ai/errors.js';
 import { CAPS, MAX_POINTS, PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
 import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
@@ -90,7 +90,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     res.on('close', disconnect);
     try {
       const flagged = await checkDisclosure({ preset, apiKey, model: validationModel(preset, teacher, evaluator), signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
-      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged });
+      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged, ...(flagged === 'model_not_found' && { role: validationRole(preset) }) });
       if (flagged === null) return res.status(502).json({ code: 'plan_check_failed' });
       return res.json({ flagged });
     } catch { if (!res.destroyed) res.status(502).json({ code: 'plan_check_failed' }); }
@@ -99,7 +99,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
   router.post('/plan', async (req, res) => {
     const request = validateRequest(req.body);
     let lastFlagged = [];
-    const fail = (code) => res.status(STATUS[code]).json({ code, ...(lastFlagged.length && { flagged: lastFlagged }) });
+    const fail = (code, role = 'teacher') => res.status(STATUS[code]).json({ code, ...(code === 'model_not_found' && { role }), ...(lastFlagged.length && { flagged: lastFlagged }) });
     if (request.code) return fail(request.code);
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return fail('invalid_key');
@@ -127,7 +127,7 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
           if (!plan) return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
           let flagged = null;
           try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: validationModel(request.preset, request.model, request.evaluator), signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
-          if (typeof flagged === 'string') return fail(flagged);
+          if (typeof flagged === 'string') return fail(flagged, validationRole(request.preset));
           if (flagged === null) return res.status(502).json({ code: 'plan_check_failed', ...(lastFlagged.length && { flagged: lastFlagged }) });
           if (!flagged.length) return res.json({ plan: { ...plan, validated: true }, constraints, coverage, coverageNote, documentLanguage });
           lastFlagged = flagged.map((i) => i + 1);

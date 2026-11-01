@@ -51,7 +51,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         dispatch({ type: 'planCleared' }); // a plan made with the old key is dropped
         return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt, flagged: error.flagged });
       }
-      setState((s) => ({ ...s, status: 'error', code: error.code, flagged: error.flagged }));
+      setState((s) => ({ ...s, status: 'error', code: error.code, role: error.role, flagged: error.flagged }));
     }
   }
 
@@ -64,7 +64,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       dispatch({ type: 'planValidated' });
       setState({ status: 'done' });
     } catch (error) {
-      if (!ac.signal.aborted) setState({ status: error.code === 'invalid_key' ? 'check_key_rejected' : 'error', code: error.code, flagged: error.flagged });
+      if (!ac.signal.aborted) setState({ status: error.code === 'invalid_key' ? 'check_key_rejected' : 'error', code: error.code, role: error.role, flagged: error.flagged });
     }
   }
 
@@ -115,7 +115,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         )}
         {['error', 'check_key_rejected'].includes(status) && (
           <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-            {state.code === 'invalid_key' ? 'Your key was rejected.' : MESSAGES[state.code] ?? FALLBACK}{' '}
+            {state.code === 'invalid_key' ? 'Your key was rejected.' : state.code === 'model_not_found' && state.role === 'evaluator' ? "The evaluator model wasn't found or isn't available for this key. Check the model settings." : MESSAGES[state.code] ?? FALLBACK}{' '}
             {['invalid_key', 'model_not_found'].includes(state.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}
           </p>
         )}

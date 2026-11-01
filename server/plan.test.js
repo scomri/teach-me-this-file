@@ -181,7 +181,7 @@ test('provider failures map to fixed codes without a repair retry or leaked deta
     const { plan, lines } = await setup(t, async () => { calls++; return new Response('secret-key', { status }); });
     const res = await plan();
     const body = await res.json();
-    assert.deepEqual(body, { code });
+    assert.deepEqual(body, { code, ...(code === 'model_not_found' && { role: 'teacher' }) });
     assert.equal(calls, 1);
     assert.ok(!JSON.stringify(body).includes('secret-key') && !lines.join('').includes('secret-key'));
   }

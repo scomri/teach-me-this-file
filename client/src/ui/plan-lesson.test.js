@@ -208,3 +208,13 @@ test('a rejected key during repair still identifies flagged questions', async ()
   assert.match(ui.text(), /steps 1/);
   await ui.unmount();
 });
+
+test('planning and restored-plan checks identify the unavailable model role', async () => {
+  for (const restoredPlan of [null, planOf(1)]) {
+    const ui = await mount([() => Response.json({ code: 'model_not_found', role: 'evaluator' }, { status: 404 })], { restoredPlan });
+    await ui.click(restoredPlan ? 'Check plan' : 'Plan');
+    assert.match(ui.text(), /evaluator model wasn't found/i);
+    assert.ok(ui.button('Open Settings'));
+    await ui.unmount();
+  }
+});

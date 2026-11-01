@@ -5,6 +5,23 @@ import { createApp } from './app.js';
 const plan = { promptLanguage: 'English', documentLanguage: 'English', coverage: 'full', coverageNote: '', constraints: { language: null, audience: null, style: null, minutes: null, steps: null, outsideSources: false }, plan: { title: 'Lesson', steps: [{ title: 'Light', objective: 'Explain it', chunkIds: ['c1'], checkQuestion: 'Why?', expected: ['energy'] }] } };
 const wrapped = (value) => Response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
 
+test('plan model errors identify the model role for generation and validation', async (t) => {
+  for (const preset of ['openai', 'openrouter', 'gemini', 'anthropic']) {
+    const role = ['openai', 'openrouter'].includes(preset) ? 'evaluator' : 'teacher';
+    const settings = { preset, teacher: 'teacher-model', evaluator: 'evaluator-model' };
+    const post = await serve(t, async (_, init) => JSON.parse(init.body).response_format?.json_schema?.name === 'lesson_plan' ? wrapped(plan) : new Response('{}', { status: 404 }));
+    const input = { ...settings, prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] };
+    assert.deepEqual(await (await post('plan', input)).json(), { code: 'model_not_found', role });
+    assert.deepEqual(await (await post('plan/check', { ...settings, steps: [{ checkQuestion: 'Why?', expected: ['energy'] }] })).json(), { code: 'model_not_found', role });
+  }
+});
+
+test('a missing teacher model is identified during plan generation', async (t) => {
+  const post = await serve(t, async () => new Response('{}', { status: 404 }));
+  const response = await post('plan', { preset: 'openai', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] });
+  assert.deepEqual(await response.json(), { code: 'model_not_found', role: 'teacher' });
+});
+
 test('plan questions are checked, repaired and checked again before a plan is returned', async (t) => {
   const calls = [];
   const replies = [plan, { flagged: [0], uncertain: false }, plan, { flagged: [], uncertain: false }];
