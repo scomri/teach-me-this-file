@@ -126,6 +126,12 @@ Subsequent deployed browser plans for the TXT and PDF injection files did not co
 
 Provider-attempt telemetry was checked on 2026-11-01 against a tagged Cloud Run verification revision receiving no live traffic. Two Gemini wrong-answer turns, one English and one Hebrew-source/Arabic-answer, each produced one upstream evaluation request and one upstream teaching request, with zero upstream 429 responses. The multilingual reply again disclosed the answer. Stub-provider tests separately exercised 429 retries and counted the responses; no real 429 was observed in these two turns. The verification revision does not establish counts for other turns or models.
 
+## Tutor message rendering (built)
+
+Tutor replies render as Markdown (lists, bold, code, tables); student messages stay plain text. Raw HTML is off, so tags in a reply show as text, and images are dropped so a reply cannot load anything from another site. Math is not rendered: formulas stay plain text. Every block element carries `dir="auto"`, so a Hebrew reply reads right to left; lists use inside markers because a container's automatic direction ignores children that set their own, so the item decides. Links open in a new tab with `rel="noopener noreferrer"`. Tables scroll sideways inside their message instead of widening the page. Bold and quotes have their own components with class names only; their styling comes with the colour tokens.
+
+The message list is not a live region, because a screen reader would read a streamed reply chunk by chunk. A waiting or streaming tutor message is `aria-busy="true"`. One visually hidden `aria-live="polite"` region receives each reply once, when it finishes (done or stopped). A failed reply is not announced, and a reply restored from a saved lesson is not announced again.
+
 ## Resuming a lesson (built)
 
 A refresh, a reopened tab or a server cold start brings the lesson back. The lesson state is saved in the browser's IndexedDB, using the native API behind a thin wrapper in `client/src/lesson/persist.js`: one database, one object store, two keys holding the single current lesson: the file (its chunks are most of the bytes) under `source`, everything else under `current`.
