@@ -20,14 +20,15 @@ const EVALUATOR_NOT_FOUND = "The evaluator model wasn't found or isn't available
 const FALLBACK = "The tutor couldn't reply. Try again.";
 
 // Tutor text is Markdown with raw HTML off (react-markdown shows it as text), so no sanitizer is needed.
-// Every block gets dir="auto" so a Hebrew reply reads right to left. `strong` and `blockquote` carry class
+// Every block gets dir="auto" so a Hebrew reply reads right to left (lists use inside markers because a
+// container's auto direction ignores children that set their own dir, so the item decides). `strong` and `blockquote` carry class
 // names that the key-term highlighter and the "From your file" quote box will be styled on once the colour
 // tokens land; images are dropped, so a reply cannot load anything from another site.
 const element = (Tag, props) => ({ node, ...rest }) => <Tag {...props} {...rest} />;
 const block = (Tag, className) => element(Tag, { dir: 'auto', className });
 const heading = (Tag) => block(Tag, 'font-semibold');
 const COMPONENTS = {
-  p: block('p'), li: block('li'), ul: block('ul', 'list-disc ps-6'), ol: block('ol', 'list-decimal ps-6'),
+  p: block('p'), li: block('li'), ul: block('ul', 'list-disc list-inside'), ol: block('ol', 'list-decimal list-inside'),
   h1: heading('h3'), h2: heading('h3'), h3: heading('h3'), h4: heading('h4'), h5: heading('h5'), h6: heading('h6'),
   pre: block('pre', 'overflow-x-auto'), th: block('th'), td: block('td'),
   blockquote: block('blockquote', 'tutor-source-quote'),
