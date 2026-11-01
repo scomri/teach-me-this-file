@@ -24,7 +24,7 @@ const steps = [
   { id: 's2', title: 'Sugar', objective: 'o2', chunkIds: ['c2'], checkQuestion: 'Why sugar?', expected: ['p'] },
 ];
 const received = {
-  type: 'planReceived', plan: { title: 'A lesson', steps }, coverage: 'full', coverageNote: '', documentLanguage: 'Hebrew',
+  type: 'planReceived', plan: { title: 'A lesson', steps, validated: true }, coverage: 'full', coverageNote: '', documentLanguage: 'Hebrew',
   constraints: { language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5 },
 };
 let planEvent = received; // a test may swap the plan before mounting
@@ -56,7 +56,7 @@ function liveStream(signal) {
 }
 
 async function mount(steps) {
-  planEvent = steps ? { ...received, plan: { title: 'A lesson', steps } } : received;
+  planEvent = steps ? { ...received, plan: { title: 'A lesson', steps, validated: true } } : received;
   const teach = []; // one per /api/teach request: { body, headers, stream }
   const cancelled = [];
   const evaluate = []; // one per /api/evaluate request: { body, headers, answer(evaluation), fail(code, status) }
@@ -98,6 +98,31 @@ async function mount(steps) {
   return { container, teach, evaluate, cancelled, button, click, feed, type, composer, render, openedSettings: () => openedSettings, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
 }
 
+test('a restored in-progress lesson can check its old questions and regenerate a usable fallback', async () => {
+  const started = [ { type: 'fileRead', source: doc }, received, { type: 'lessonStarted' }, { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] }, { type: 'teachDone' } ].reduce(reduce, initialLesson());
+  const initial = { ...started, plan: { ...started.plan, validated: false } };
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/plan/check') return Response.json({ flagged: [] });
+    if (url === '/api/teach') { sent = JSON.parse(init.body); return new Response('event: done\ndata: {}\n\n'); }
+    throw new Error(`unexpected request ${url}`);
+  };
+  function Restored() {
+    const [lesson, dispatch] = React.useReducer(reduce, initial);
+    return React.createElement(Lesson, { lesson, dispatch, settings, saveCount: 0, openSettings() {} });
+  }
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(React.createElement(Restored)));
+  const click = async (label) => act(async () => { [...container.querySelectorAll('button')].find(b => b.textContent.trim() === label).click(); await new Promise(r => setTimeout(r, 0)); });
+  assert.match(container.textContent, /unchecked questions/);
+  await click('Check questions');
+  assert.doesNotMatch(container.textContent, /unchecked questions/);
+  await click('Regenerate');
+  assert.equal(sent.questionValidated, true);
+  await act(() => root.unmount());
+});
+
 test('Start is enabled on a plan and sends an opening request built from the step, with the key in a header', async () => {
   const ui = await mount();
   assert.equal(ui.button('Start').disabled, false);
@@ -110,7 +135,7 @@ test('Start is enabled on a plan and sends an opening request built from the ste
   assert.deepEqual(body.chunks.map((c) => c.id), ['c1', 'c2']);
   assert.equal(body.lesson.language, 'English');
   assert.equal(body.lesson.documentLanguage, 'Hebrew');
-  assert.ok(!JSON.stringify(body).includes('the secret key point'), 'an opening request carries no key points');
+  assert.deepEqual(body.protectedPoints, ['the secret key point']);
   assert.match(ui.text(), /Step 1 of 2/);
   await ui.unmount();
 });
@@ -273,7 +298,7 @@ test('the tutor message cites all passages supplied to the teacher', async () =>
   await ui.feed(() => next.answer({ ...right, relevantChunkIds: ['c1'] }));
   assert.equal(ui.teach[2].body.transition, 'advance');
   await reply(ui, 2);
-  const sources = [...ui.container.querySelectorAll('li')].map((li) => /Source: (.*)$/.exec(li.textContent)?.[1]);
+  const sources = [...ui.container.querySelectorAll('li')].map((li) => /Source: (.*)$/.exec(li.querySelector('summary')?.textContent ?? '')?.[1]);
   assert.equal(sources.at(-1), 'page 3'); // the next step's chunks, not the evaluator's id for the previous step
   await ui.click('Regenerate');
   await reply(ui, 3);
@@ -311,10 +336,13 @@ test('two wrong answers: a nudge, then a reveal with all points; Continue opens 
   const first = await send(ui, 'x');
   await ui.feed(() => first.answer(wrong));
   assert.equal(ui.teach[1].body.transition, 'nudge');
+  assert.match(first.headers['X-Turn-Id'], /^[0-9a-f-]{36}$/);
+  assert.equal(ui.teach[1].headers['X-Turn-Id'], first.headers['X-Turn-Id']);
   assert.deepEqual(ui.teach[1].body.answered.pointsMet, []);
   await reply(ui, 1, 'Think about light.');
   assert.equal(ui.button('Continue'), undefined);
   const second = await send(ui, 'y');
+  assert.notEqual(second.headers['X-Turn-Id'], first.headers['X-Turn-Id']);
   assert.deepEqual(second.body.earlier, ['x'], 'earlier answers on the step travel with the next one');
   await ui.feed(() => second.answer(wrong));
   assert.equal(ui.teach[2].body.transition, 'reveal');

@@ -40,7 +40,7 @@ test('check times out, rejects unsupported input, and uses defaults for blank ro
  { const res = await check({preset:'gemini',teacher:{}}); assert.equal(res.status,400); assert.deepEqual(await res.json(),{code:'invalid_request'}); }
  assert.deepEqual(await (await check({preset:'gemini'},'')).json(),{code:'invalid_key'});
  assert.deepEqual(await (await check({preset:'gemini',evaluator:' ',teacher:'custom-model'})).json(),{code:'ok'});
- assert.deepEqual(models,['timeout','gemini-3.5-flash-lite','custom-model']);
+ assert.deepEqual(models,['timeout','gemini-3.6-flash','custom-model']);
  assert.ok(!lines.join('').includes('secret-key'));
 });
 

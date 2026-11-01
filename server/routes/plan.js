@@ -1,13 +1,14 @@
 import { Router } from 'express';
-import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_STEPS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
+import { checkDisclosure, validationModel, validationRole } from '../ai/disclosure.js';
 import { providerOutcome } from '../ai/errors.js';
-import { PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
+import { CAPS, MAX_POINTS, PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
 import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
 
 const SCRIPTS = ['hebrew', 'arabic', 'latin', 'other'];
-const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, out_of_credit: 402, rate_limited: 429, unreachable: 502, plan_invalid: 502 };
+const STATUS = { invalid_request: 400, invalid_key: 401, model_not_found: 404, document_too_long: 413, out_of_credit: 402, rate_limited: 429, unreachable: 502, plan_invalid: 502, plan_check_failed: 502 };
 
 const invalid = { code: 'invalid_request' };
 // Ids and pages go into prompt attributes, so they are checked, not escaped.
@@ -30,9 +31,9 @@ export function validChunks(chunks) {
 // Returns the checked request, or an error code. The document is either `chunks` (the full text) or
 // an `outline` of it with `chunkIds`, the id of every chunk, in document order.
 function validateRequest(body) {
-  const { preset, teacher, prompt = '', script = 'other', chunks, outline, chunkIds, wholeFile = false } = body ?? {};
+  const { preset, teacher, evaluator, prompt = '', script = 'other', chunks, outline, chunkIds, wholeFile = false } = body ?? {};
   if (!Object.hasOwn(PRESETS, preset)) return invalid;
-  if (teacher !== undefined && (typeof teacher !== 'string' || teacher.length > MAX_MODEL_CHARS)) return invalid;
+  if ([teacher, evaluator].some((v) => v !== undefined && (typeof v !== 'string' || v.length > MAX_MODEL_CHARS))) return invalid;
   if (typeof prompt !== 'string' || prompt.length > MAX_PROMPT_CHARS || !SCRIPTS.includes(script)) return invalid;
   if (typeof wholeFile !== 'boolean' || (chunks === undefined) === (outline === undefined)) return invalid;
 
@@ -64,7 +65,7 @@ function validateRequest(body) {
     for (const id of position.keys()) ids.add(id);
   }
   if (chars > MAX_DOC_CHARS) return { code: 'document_too_long' };
-  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, prompt, script, chunks, outline, ids, wholeFile };
+  return { preset, model: teacher?.trim() || PRESETS[preset].teacher, evaluator: evaluator?.trim() || PRESETS[preset].evaluator, prompt, script, chunks, outline, ids, wholeFile };
 }
 
 // POST /api/plan { preset, teacher?, prompt?, script?, chunks | outline + chunkIds, wholeFile? } with X-Api-Key.
@@ -72,9 +73,33 @@ function validateRequest(body) {
 // A rejected plan gets one repair retry.
 export function planRouter(fetchImpl, timeoutMs = 90_000) {
   const router = Router();
+  router.post('/plan/check', async (req, res) => {
+    const { preset, teacher, evaluator, steps } = req.body ?? {};
+    const invalidCheck = () => res.status(400).json({ code: 'invalid_request' });
+    if (!Object.hasOwn(PRESETS, preset) || [teacher, evaluator].some((v) => v !== undefined && (typeof v !== 'string' || v.length > MAX_MODEL_CHARS))) return invalidCheck();
+    if (!Array.isArray(steps) || !steps.length || steps.length > MAX_STEPS) return invalidCheck();
+    for (const s of steps) {
+      if (typeof s?.checkQuestion !== 'string' || !s.checkQuestion.trim() || s.checkQuestion.length > CAPS.question) return invalidCheck();
+      if (!Array.isArray(s.expected) || !s.expected.length || s.expected.length > MAX_POINTS || s.expected.some((p) => typeof p !== 'string' || !p.trim() || p.length > CAPS.point)) return invalidCheck();
+    }
+    const apiKey = req.get('X-Api-Key')?.trim();
+    if (!apiKey) return res.status(401).json({ code: 'invalid_key' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const disconnect = () => { if (!res.writableEnded) controller.abort(); };
+    res.on('close', disconnect);
+    try {
+      const flagged = await checkDisclosure({ preset, apiKey, model: validationModel(preset, teacher, evaluator), signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
+      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged, ...(flagged === 'model_not_found' && { role: validationRole(preset) }) });
+      if (flagged === null) return res.status(502).json({ code: 'plan_check_failed' });
+      return res.json({ flagged });
+    } catch { if (!res.destroyed) res.status(502).json({ code: 'plan_check_failed' }); }
+    finally { clearTimeout(timer); res.off('close', disconnect); }
+  });
   router.post('/plan', async (req, res) => {
     const request = validateRequest(req.body);
-    const fail = (code) => res.status(STATUS[code]).json({ code });
+    let lastFlagged = [];
+    const fail = (code, role = 'teacher') => res.status(STATUS[code]).json({ code, ...(code === 'model_not_found' && { role }), ...(lastFlagged.length && { flagged: lastFlagged }) });
     if (request.code) return fail(request.code);
     const apiKey = req.get('X-Api-Key')?.trim();
     if (!apiKey) return fail('invalid_key');
@@ -99,11 +124,18 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
         const result = reply && typeof reply === 'object' ? validatePlan(reply, request.ids, { promptBlank: !request.prompt.trim(), wholeFile: request.wholeFile }) : { ok: false, errors: ['the reply was not a JSON object'] };
         if (result.ok) {
           const { plan, constraints, coverage, coverageNote, documentLanguage } = result;
-          return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
+          if (!plan) return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
+          let flagged = null;
+          try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: validationModel(request.preset, request.model, request.evaluator), signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
+          if (typeof flagged === 'string') return fail(flagged, validationRole(request.preset));
+          if (flagged === null) return res.status(502).json({ code: 'plan_check_failed', ...(lastFlagged.length && { flagged: lastFlagged }) });
+          if (!flagged.length) return res.json({ plan: { ...plan, validated: true }, constraints, coverage, coverageNote, documentLanguage });
+          lastFlagged = flagged.map((i) => i + 1);
+          result.errors = flagged.map((i) => `step ${i + 1} check question discloses a key point`);
         }
         messages = repairMessages(messages, content, result.errors);
       }
-      fail('plan_invalid');
+      res.status(502).json({ code: 'plan_invalid', ...(lastFlagged.length && { flagged: lastFlagged }) });
     } catch {
       if (!res.destroyed) fail('unreachable'); // network failure, timeout, or a client that left
     } finally {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). File ingestion, model settings, lesson planning and the tutor loop are built. The tutor evaluates answers and other student intents, streams the selected reply, and applies a shared turn budget; lesson progress resumes after a refresh through IndexedDB. Planning notes are kept outside version control.
+Slice 0 done: Express API (`server/`) and Vite React client (`client/`) with a streamed echo endpoint, a redacting request logger, a Dockerfile and CI, deployed to Cloud Run (automatically on every push to `main`, ADR 0004). File ingestion, model settings, lesson planning and the tutor loop are built. The tutor evaluates answers and other student intents, buffers protected replies for validation, and applies a shared turn budget; lesson progress resumes after a refresh through IndexedDB. The tutor turn is recorded in ADR 0005; deployed real-key scenarios and their limits are recorded in `DECISIONS.md`. Planning notes are kept outside version control.
 
 Commands (Node 24):
 
@@ -52,7 +52,7 @@ Layers, kept separate on purpose:
 Key design rules:
 
 - **Client owns lesson state.** Plan and progress live in app state, not in chat history. The server is stateless: each request carries what it needs. This survives free-tier cold starts.
-- **LLM proposes, code disposes.** Per student message: a small structured evaluation call returns an intent (`answer | asks_for_answer | off_topic | question`), the key points met and the relevant chunk ids; code derives `correct`, `partial` or `wrong` from the key points, and the state machine decides the transition; then a streamed teaching reply is generated for that transition only.
+- **LLM proposes, code disposes.** Per student message: a structured evaluation call returns an intent (`answer | asks_for_answer | off_topic | question`), the key points met and the relevant chunk ids; code derives `correct`, `partial` or `wrong` from the key points, and the state machine decides the transition. A teaching reply is generated for that transition only; protected drafts are buffered for validation before display.
 - **Lesson length is a ceiling, never padded.** Steps ≤ minutes ÷ 2.5, clamped to 1–10 (5 with no minutes), from `shared/limits.js`. There is no minimum lesson length. Requests the app does not follow (more steps than the ceiling, outside sources, a topic the file lacks) are bounded by code and the plan screen says so.
 - **Grounding:** the tutor teaches only from the current step's source chunks. Tutor messages cite all chunks supplied to the teacher; the UI shows their pages or sections.
 - **File text is content, not instructions.** Delimit it in prompts. Test with a file containing "ignore your instructions".

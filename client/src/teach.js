@@ -1,5 +1,6 @@
 // Teach request: one streamed tutor reply. No React.
 import { MAX_HISTORY_TURNS, MAX_TUTOR_CHARS } from '../../shared/limits.js';
+import { protectsUnansweredPoints } from '../../shared/transitions.js';
 import { stepChunks } from './plan.js';
 
 export class TeachError extends Error {
@@ -20,11 +21,17 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
   const request = {
     preset: settings.preset,
     teacher: settings.teacher,
+    evaluator: settings.evaluator,
     transition,
     lesson: { ...teacher.constraints, documentLanguage: source.language },
     step: { index: i + 1, total: plan.steps.length, title: step.title, objective: step.objective, checkQuestion: step.checkQuestion },
     chunks: stepChunks(step, source),
   };
+  if (protectsUnansweredPoints(transition)) {
+    const met = progress.steps[step.id].pointsMet;
+    request.questionValidated = plan.validated === true;
+    request.protectedPoints = step.expected.filter((_, n) => !met.includes(n));
+  }
   if (transition === 'opening') return request;
   // The step the student just answered: the one before the reply's step when an advance opens the next.
   const answered = transition === 'advance' ? plan.steps[i - 1] : step;
@@ -46,12 +53,12 @@ export function teachRequest({ lesson, transition, settings, stepId = lesson.pro
 // Streams one reply: onStart(id) when the server names the stream, onText(text) per chunk. Resolves when
 // the reply is done. Throws TeachError with the server's code, 'unreachable' for a network failure, or the
 // AbortError when `signal` aborted.
-export async function streamTeach({ request, apiKey, signal, onStart, onText }, fetchImpl = fetch) {
+export async function streamTeach({ request, apiKey, signal, onStart, onText, turnId }, fetchImpl = fetch) {
   let response;
   try {
     response = await fetchImpl('/api/teach', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+      headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey, ...(turnId && { 'X-Turn-Id': turnId }) },
       body: JSON.stringify(request),
       signal,
     });

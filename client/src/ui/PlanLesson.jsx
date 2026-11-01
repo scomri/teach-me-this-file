@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
-import { requestPlan } from '../plan.js';
+import { checkPlan, requestPlan } from '../plan.js';
 import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
 const MESSAGES = {
@@ -9,6 +9,7 @@ const MESSAGES = {
   rate_limited: 'The provider is rate-limiting this key. Wait a moment and try again.',
   unreachable: "Couldn't reach the model provider. Try again.",
   plan_invalid: "The model didn't return a usable plan. Try again, or change the request.",
+  plan_check_failed: "The plan's questions could not be checked for answer disclosure. Retry the check or regenerate the whole plan.",
   document_too_long: 'The plan request was too large for the server. Try a shorter file, or a file with fewer pages.',
 };
 const FALLBACK = "The plan couldn't be made. Try again.";
@@ -48,9 +49,22 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         // The key changed while the request was in flight: the rejection is about the old one.
         if (latest.current.settings.apiKey !== sent.settings.apiKey) return runPlan({ wholeFile, prompt: sent.prompt });
         dispatch({ type: 'planCleared' }); // a plan made with the old key is dropped
-        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt });
+        return setState({ status: 'key_rejected', wholeFile, prompt: sent.prompt, flagged: error.flagged });
       }
-      setState((s) => ({ ...s, status: 'error', code: error.code }));
+      setState((s) => ({ ...s, status: 'error', code: error.code, role: error.role, flagged: error.flagged }));
+    }
+  }
+
+  async function validateRestored() {
+    controller.current?.abort();
+    const ac = new AbortController(); controller.current = ac;
+    setState({ status: 'checking' });
+    try {
+      await checkPlan({ plan: lesson.plan, settings, signal: ac.signal });
+      dispatch({ type: 'planValidated' });
+      setState({ status: 'done' });
+    } catch (error) {
+      if (!ac.signal.aborted) setState({ status: error.code === 'invalid_key' ? 'check_key_rejected' : 'error', code: error.code, role: error.role, flagged: error.flagged });
     }
   }
 
@@ -63,11 +77,12 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
 
   useEffect(() => {
     if (saveCount && state.status === 'key_rejected') runPlan({ wholeFile: state.wholeFile, prompt: state.prompt });
+    if (saveCount && state.status === 'check_key_rejected') validateRestored();
   }, [saveCount]);
 
   const { status, coverage } = state;
   const { plan } = lesson;
-  const planning = status === 'planning';
+  const planning = status === 'planning' || status === 'checking';
   const noKey = !settings.apiKey.trim();
 
   return (
@@ -91,16 +106,17 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       </div>
 
       <div aria-live="polite">
+        {state.flagged?.length > 0 && <p role="alert">Check questions may reveal answers in steps {state.flagged.join(', ')}. Regenerate the whole plan.</p>}
         {status === 'key_rejected' && (
           <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
             Your key was rejected.{' '}
             <button className="underline" onClick={openSettings}>Open Settings</button>
           </p>
         )}
-        {status === 'error' && (
+        {['error', 'check_key_rejected'].includes(status) && (
           <p role="alert" className="mt-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">
-            {MESSAGES[state.code] ?? FALLBACK}{' '}
-            {state.code === 'model_not_found' && <button className="underline" onClick={openSettings}>Open Settings</button>}
+            {state.code === 'invalid_key' ? 'Your key was rejected.' : state.code === 'model_not_found' && state.role === 'evaluator' ? "The evaluator model wasn't found or isn't available for this key. Check the model settings." : MESSAGES[state.code] ?? FALLBACK}{' '}
+            {['invalid_key', 'model_not_found'].includes(state.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}
           </p>
         )}
       </div>
@@ -112,6 +128,10 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         <PlanScreen
           plan={plan} constraints={lesson.teacher.constraints} doc={doc} busy={planning}
           onStart={() => dispatch({ type: 'lessonStarted' })}
+          startAllowed={plan.validated === true && !noKey}
+          onValidate={validateRestored}
+          needsValidation={plan.validated !== true}
+          noKey={noKey}
           onRegenerate={() => runPlan({ wholeFile: state.wholeFile && state.prompt === prompt })}
         />
       )}

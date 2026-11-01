@@ -6,7 +6,7 @@ import { MAX_DOC_CHARS } from '../shared/limits.js';
 
 const KEY = 'sk-secret-teach-key';
 const request = (over = {}) => ({
-  preset: 'gemini', transition: 'opening',
+  preset: 'gemini', transition: 'opening', protectedPoints: ['energy'],
   lesson: { language: 'English', audience: null, style: null, documentLanguage: 'Hebrew' },
   step: { index: 1, total: 3, title: 'Light', objective: 'Explain light', checkQuestion: 'Why light?' },
   chunks: [{ id: 'c1', page: 2, text: 'Photosynthesis turns light into sugar.' }],
@@ -35,7 +35,9 @@ function providerStream(chunks, hang) {
 function provider(words = ['Plants ', 'eat ', 'light.'], { hang = false, status = 200 } = {}) {
   const calls = [];
   const fn = async (url, init) => {
-    const call = { url, body: JSON.parse(init.body), aborted: false };
+    const body = JSON.parse(init.body);
+    if (body.response_format?.json_schema?.name === 'disclosure_check') return Response.json({ choices: [{ message: { content: JSON.stringify({ flagged: [], uncertain: false }) } }] });
+    const call = { url, body, aborted: false };
     init.signal?.addEventListener('abort', () => { call.aborted = true; });
     calls.push(call);
     if (status !== 200) return new Response('{}', { status });
@@ -54,6 +56,33 @@ const events = (body) => body.split('\n\n').filter(Boolean).map((block) => {
   return [name, JSON.parse(/^data: (.*)$/m.exec(block)[1])];
 });
 
+test('teaching telemetry records provider 429 retries and rejects unsafe correlation ids', async (t) => {
+  const providerFetch = provider([], { status: 429 });
+  const { url, lines } = start(t, { providerFetch });
+  await (await teach(url, request(), { 'X-Api-Key': KEY, 'X-Turn-Id': 'private-content' })).text();
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.equal(event.operation, 'teach');
+  assert.equal(event.attempts, 2);
+  assert.equal(event.rateLimits, 2);
+  assert.match(event.turnId, /^[0-9a-f-]{36}$/);
+  assert.ok(!JSON.stringify(lines).includes('private-content'));
+  assert.ok(!JSON.stringify(lines).includes(KEY));
+});
+
+test('teaching telemetry includes disclosure checks and their retries', async (t) => {
+  let calls = 0;
+  const { url, lines } = start(t, { providerFetch: async () => {
+    calls++;
+    if (calls === 1) return new Response(providerStream(sse(['A safe hint.'])));
+    if (calls === 2) return new Response('{}', { status: 429 });
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ flagged: [], uncertain: false }) } }] });
+  } });
+  await (await teach(url, request())).text();
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.equal(event.attempts, 3);
+  assert.equal(event.rateLimits, 1);
+});
+
 test('the reply streams as start, text chunks, then done', async (t) => {
   const providerFetch = provider();
   const { url, streams } = start(t, { providerFetch });
@@ -62,7 +91,7 @@ test('the reply streams as start, text chunks, then done', async (t) => {
   const got = events(await res.text());
   assert.equal(got[0][0], 'start');
   assert.match(got[0][1].id, /^[\w-]+$/);
-  assert.deepEqual(got.slice(1, -1), [['message', { text: 'Plants ' }], ['message', { text: 'eat ' }], ['message', { text: 'light.' }]]);
+  assert.deepEqual(got.slice(1, -1), [['message', { text: 'Plants eat light.' }]]);
   assert.deepEqual(got.at(-1), ['done', {}]);
   assert.equal(providerFetch.calls.length, 1);
   assert.equal(providerFetch.calls[0].body.stream, true);
@@ -78,6 +107,7 @@ test('the prompt: the same system message for any step, fenced chunks, no key po
   const [a, b] = providerFetch.calls.map((c) => c.body.messages);
   assert.equal(a[0].role, 'system');
   assert.equal(a[0].content, b[0].content);
+  assert.match(a[0].content, /misleading.*bounds/i);
   const user = a[1].content;
   assert.equal(a.length, 2);
   assert.equal(user.match(/<chunk /g).length, 1);
@@ -130,7 +160,7 @@ test('cancel ends the stream and aborts the upstream call', async (t) => {
   const reader = res.body.getReader();
   const dec = new TextDecoder();
   let seen = '';
-  while (!seen.includes('Plants')) seen += dec.decode((await reader.read()).value);
+  while (!seen.includes('event: start')) seen += dec.decode((await reader.read()).value);
   const id = /"id":"([^"]+)"/.exec(seen)[1];
   assert.equal((await fetch(`${url}/api/streams/${id}/cancel`, { method: 'POST' })).status, 204);
   assert.ok(await waitFor(() => providerFetch.calls[0].aborted), 'upstream call aborted');

@@ -38,6 +38,16 @@ function provider(...replies) {
 }
 const good = reply({ intent: 'answer', keyPointsMet: [1], relevantChunkIds: ['c1'] });
 
+test('provider telemetry counts retries without exposing request data', async (t) => {
+  const { url, lines } = start(t, { providerFetch: provider(429, good) });
+  const id = 'c4f4350f-e743-4bae-bf62-ce5122c2ad17';
+  assert.equal((await evaluate(url, request(), { 'X-Api-Key': KEY, 'X-Turn-Id': id })).status, 200);
+  const event = lines.map(line => { try { return JSON.parse(line); } catch { return null; } }).find(line => line?.event === 'provider_attempts');
+  assert.deepEqual(event, { event: 'provider_attempts', turnId: id, operation: 'evaluate', attempts: 2, rateLimits: 1 });
+  assert.ok(!JSON.stringify(lines).includes(KEY));
+  assert.ok(!JSON.stringify(lines).includes('for energy'));
+});
+
 test('the rate limit retry and schema repair share the turn budget', async (t) => {
   const providerFetch = provider(429, reply('invalid'), good);
   const { url } = start(t, { providerFetch });
@@ -53,7 +63,7 @@ test('a turn with repair and a rate limit ends on the second 429 within four pro
   const teaching = await fetch(`${url}/api/teach`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': KEY },
     body: JSON.stringify({
-      preset: 'gemini', transition: 'nudge', rateLimitRetried: evaluated.rateLimitRetried,
+      preset: 'gemini', transition: 'nudge', protectedPoints: ['it makes sugar'], rateLimitRetried: evaluated.rateLimitRetried,
       lesson: {}, step: { index: 1, total: 1, title: 'Light', objective: 'Explain light', checkQuestion: 'Why light?' },
       chunks: request().chunks, answered: { title: 'Light', checkQuestion: 'Why light?', expected: request().step.expected, pointsMet: [1] },
     }),
@@ -69,7 +79,7 @@ test('a valid request answers { evaluation } and asks the evaluator model for st
   assert.equal(res.status, 200);
   assert.deepEqual(await res.json(), { evaluation: { intent: 'answer', keyPointsMet: [1], relevantChunkIds: ['c1'] } });
   const { body } = providerFetch.calls[0];
-  assert.match(body.model, /flash-lite/); // the evaluator model of the preset
+  assert.equal(body.model, 'gemini-3.6-flash'); // the evaluator model of the preset
   assert.equal(body.stream, false);
   assert.equal(body.temperature, 0);
   assert.equal(body.response_format.type, 'json_schema');

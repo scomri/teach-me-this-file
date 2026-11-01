@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
 import { reduce } from '../lesson/lesson.js';
-import { sourcePages } from '../plan.js';
+import { checkPlan, sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
 
 const MESSAGES = {
@@ -25,6 +25,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   const errorCode = error?.code;
   const [draft, setDraft] = useState('');
   const [evaluating, setEvaluating] = useState(false);
+  const [checkingPlan, setCheckingPlan] = useState(false);
+  const [planError, setPlanError] = useState(null);
+  const planCheck = useRef(null);
   const current = useRef(null); // the stream in flight: { ac, id, stopped }
   const grading = useRef(null); // the evaluation in flight: its AbortController
   const latest = useRef({});
@@ -32,7 +35,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   // `snapshot`: the lesson as this reply sees it. The reducer has not rendered an event dispatched a moment
   // ago, and a reply must see the progress that event applied.
-  async function stream(transition, stepId, snapshot = latest.current.lesson, rateLimitRetried = false) {
+  async function stream(transition, stepId, snapshot = latest.current.lesson, rateLimitRetried = false, turnId) {
     const ac = new AbortController();
     const run = { ac, id: null, stopped: false };
     const sentKey = latest.current.settings.apiKey;
@@ -41,7 +44,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     try {
       const s = latest.current.settings;
       await streamTeach({
-        request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal,
+        request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal, turnId,
         onStart(id) { run.id = id; if (run.stopped) halt(run); },
         onText: (text) => { if (current.current === run) dispatch({ type: 'teachChunk', text }); },
       });
@@ -73,9 +76,9 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   }
 
   // Starts a tutor reply: the message shows at once, then streams.
-  function reply(transition, stepId, chunkIds, snapshot, rateLimitRetried) {
+  function reply(transition, stepId, chunkIds, snapshot, rateLimitRetried, turnId) {
     dispatch({ type: 'teachStarted', stepId, transition, chunkIds });
-    stream(transition, stepId, snapshot, rateLimitRetried);
+    stream(transition, stepId, snapshot, rateLimitRetried, turnId);
   }
 
   function open() {
@@ -87,12 +90,13 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   // before the reply streams, so a Stop or a failed reply cannot undo the move.
   async function grade(message, base) {
     const ac = new AbortController();
+    const turnId = crypto.randomUUID();
     const sentKey = latest.current.settings.apiKey;
     grading.current = ac;
     setEvaluating(true);
     setError(null);
     try {
-      const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal });
+      const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal, turnId });
       if (grading.current !== ac) return;
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
@@ -102,7 +106,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       // The reply's step is the one progress is on now: the next step after an advance, else the answered one.
       const stepChunkIds = plan.steps.find((s) => s.id === after.progress.current).chunkIds;
       // Cite every passage the teaching request supplies.
-      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried);
+      reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried, turnId);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
       setError({ code: error.code, from: 'evaluator', key: sentKey });
@@ -142,9 +146,25 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     stream(transition, stepId, reduce(lesson, event)); // the reply being replaced is not part of its own history
   }
 
+  async function validatePlan() {
+    const ac = new AbortController();
+    planCheck.current = ac;
+    setCheckingPlan(true);
+    setPlanError(null);
+    try {
+      await checkPlan({ plan, settings: latest.current.settings, signal: ac.signal });
+      if (!ac.signal.aborted) dispatch({ type: 'planValidated' });
+    } catch (error) {
+      if (!ac.signal.aborted) setPlanError(error);
+    } finally {
+      if (planCheck.current === ac) { planCheck.current = null; setCheckingPlan(false); }
+    }
+  }
+
   useEffect(() => {
     if (!messages.length) open();
     return () => {
+      planCheck.current?.abort();
       grading.current?.abort();
       grading.current = null;
       const run = current.current;
@@ -172,6 +192,11 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     <section className="mt-6">
       <h2 dir="auto" className="text-xl font-semibold">{plan.title}</h2>
       <p className="mt-1 text-sm text-slate-600">Step {index + 1} of {plan.steps.length}</p>
+      {!plan.validated && <div role="status" className="mt-3 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
+        <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
+        <button className="underline disabled:opacity-40" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
+        {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}</p>}
+      </div>}
 
       <ol className="mt-4 space-y-3" aria-live="polite">
         {messages.map((m, i) => {
@@ -186,9 +211,12 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
           const pages = sourcePages(m, source);
           return (
             <li key={i} className="rounded border border-slate-200 p-3">
-              <p dir="auto" className="whitespace-pre-wrap">{m.text}{m.status === 'streaming' && !m.text && 'Thinking…'}</p>
+              <p dir="auto" className="whitespace-pre-wrap">{m.text}{m.status === 'streaming' && !m.text && 'Preparing reply…'}</p>
               {m.status === 'stopped' && <p className="mt-1 text-xs text-slate-500">Stopped.</p>}
-              {pages && <p className="mt-2 text-xs text-slate-500">Source: {pages}</p>}
+              {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-slate-600">
+                <summary>Source{pages ? `: ${pages}` : ' passages'}</summary>
+                {source.chunks.filter((c) => m.chunkIds.includes(c.id)).map((c) => <p key={c.id} dir="auto" className="mt-2 whitespace-pre-wrap">{c.text}</p>)}
+              </details>}
             </li>
           );
         })}

@@ -18,9 +18,9 @@ const { default: PlanLesson } = await vite.ssrLoadModule('/src/ui/PlanLesson.jsx
 test.after(() => vite.close());
 // The lesson state lives above PlanLesson, as in App: the file is read and the prompt typed into it.
 let typePrompt; // the mounted host's way to change the prompt, as typing does
-function Host({ prompt, ...props }) {
+function Host({ prompt, restoredPlan, ...props }) {
   const [lesson, dispatch] = React.useReducer(reduce, prompt, (p) =>
-    [{ type: 'fileRead', source: doc }, { type: 'promptChanged', prompt: p }].reduce(reduce, initialLesson()));
+    [{ type: 'fileRead', source: doc }, { type: 'promptChanged', prompt: p }, ...(restoredPlan ? [{ type: 'planReceived', plan: restoredPlan, constraints: constraints(), coverage: 'full', coverageNote: '' }] : [])].reduce(reduce, initialLesson()));
   typePrompt = (p) => dispatch({ type: 'promptChanged', prompt: p });
   return React.createElement(PlanLesson, { ...props, lesson, dispatch });
 }
@@ -31,7 +31,7 @@ const step = (n) => ({ id: `s${n}`, title: `Step ${n}`, objective: 'o', chunkIds
 const planOf = (n) => ({ title: 'A lesson', steps: Array.from({ length: n }, (_, i) => step(i + 1)) });
 const constraints = (over = {}) => ({ language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5, ...over });
 
-async function mount(replies, { prompt = 'teach it' } = {}) {
+async function mount(replies, { prompt = 'teach it', restoredPlan = null } = {}) {
   const sent = [];
   // A reply is a result body, or a function of the fetch init for a custom response (an error, a hanging request).
   globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); const r = replies.shift(); return typeof r === 'function' ? r(init) : Response.json(r); };
@@ -41,7 +41,7 @@ async function mount(replies, { prompt = 'teach it' } = {}) {
   let mounted = false;
   const render = (p, saveCount = 0) => act(async () => {
     if (mounted) typePrompt(p);
-    root.render(React.createElement(Host, { settings, saveCount, prompt: p, openSettings() {} }));
+    root.render(React.createElement(Host, { settings, saveCount, prompt: p, restoredPlan, openSettings() {} }));
     mounted = true;
   });
   await render(prompt);
@@ -186,4 +186,35 @@ test('a provider that says the key has no credit gets its own message, not "coul
   assert.match(ui.text(), /doesn't have enough credit/);
   assert.ok(!ui.text().includes("Couldn't reach"));
   await ui.unmount();
+});
+
+
+test('a restored unvalidated plan cannot start until its questions pass a check', async () => {
+  const ui = await mount([{ flagged: [0] }, { flagged: [] }], { restoredPlan: planOf(1) });
+  assert.equal(ui.button('Start'), undefined);
+  await ui.click('Check plan');
+  assert.match(ui.text(), /steps 1/);
+  assert.equal(ui.button('Start'), undefined);
+  await ui.click('Check plan');
+  assert.equal(ui.button('Start').disabled, false);
+  assert.equal(ui.sent.length, 2);
+  await ui.unmount();
+});
+
+test('a rejected key during repair still identifies flagged questions', async () => {
+  const ui = await mount([() => Response.json({ code: 'invalid_key', flagged: [1] }, { status: 401 })]);
+  await ui.click('Plan');
+  assert.match(ui.text(), /Your key was rejected/);
+  assert.match(ui.text(), /steps 1/);
+  await ui.unmount();
+});
+
+test('planning and restored-plan checks identify the unavailable model role', async () => {
+  for (const restoredPlan of [null, planOf(1)]) {
+    const ui = await mount([() => Response.json({ code: 'model_not_found', role: 'evaluator' }, { status: 404 })], { restoredPlan });
+    await ui.click(restoredPlan ? 'Check plan' : 'Plan');
+    assert.match(ui.text(), /evaluator model wasn't found/i);
+    assert.ok(ui.button('Open Settings'));
+    await ui.unmount();
+  }
 });

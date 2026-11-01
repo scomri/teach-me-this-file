@@ -74,8 +74,10 @@ export function reduce(state, event) {
         plan: { ...plan, coverage, coverageNote, maxSteps, requested: { steps, outsideSources } },
       };
     }
+    case 'planValidated':
+      return state.plan ? { ...state, plan: { ...state.plan, validated: true } } : state;
     case 'lessonStarted': {
-      if (!state.plan || state.progress) return state;
+      if (!state.plan || state.plan.validated !== true || state.progress) return state;
       const steps = Object.fromEntries(state.plan.steps.map((s, i) => [s.id, { status: i === 0 ? 'active' : 'pending', pointsMet: [], fails: 0, asks: 0 }]));
       return { ...state, progress: { current: state.plan.steps[0].id, steps }, messages: [] };
     }
