@@ -27,6 +27,14 @@ test('checkKey maps a network failure or an unreadable body to unreachable', asy
   assert.deepEqual(await checkKey({ settings }, async () => new Response('<html>', { status: 502 })), { code: 'unreachable' });
 });
 
+test('checkKey maps an aborted request to unreachable', async () => {
+  const controller = new AbortController();
+  const fetchImpl = (url, { signal }) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))));
+  const pending = checkKey({ settings, signal: controller.signal }, fetchImpl);
+  controller.abort();
+  assert.deepEqual(await pending, { code: 'unreachable' });
+});
+
 test('pingHealth resolves true only for { ok: true }', async () => {
   assert.equal(await pingHealth({}, async () => Response.json({ ok: true })), true);
   assert.equal(await pingHealth({}, async () => Response.json({ ok: false })), false);
