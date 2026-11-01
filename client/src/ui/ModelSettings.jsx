@@ -1,6 +1,7 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { MAX_MODEL_CHARS } from '../../../shared/limits.js';
 import { PRESETS } from '../../../shared/presets.js';
+import { checkKey } from '../connection.js';
 import { loadSettings, saveSettings } from '../settings.js';
 
 const notices = {
@@ -68,13 +69,7 @@ export default function ModelSettings({ ref, onSettings, onSaved }) {
     const next = {...draft, apiKey:draft.apiKey.trim()};
     const timeout = setTimeout(() => controller.abort(), 12000);
     let result;
-    try {
-      const response = await fetch('/api/check', {
-        method:'POST', headers:{'Content-Type':'application/json','X-Api-Key':next.apiKey},
-        body:JSON.stringify({preset:next.preset,evaluator:next.evaluator,teacher:next.teacher}),signal:controller.signal,
-      });
-      result = await response.json().catch(() => ({code:'unreachable'}));
-    } catch { result = {code:'unreachable'}; }
+    try { result = await checkKey({settings:next,signal:controller.signal}); }
     finally { clearTimeout(timeout); }
     if (version !== generation.current) return;
     setBusy(false);

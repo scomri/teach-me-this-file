@@ -616,3 +616,108 @@ test('a rejected evaluator model names the evaluator, and a rejected request has
   assert.match(ui.text(), /server couldn't accept/);
   await ui.unmount();
 });
+
+// Tutor replies are Markdown with raw HTML off; student messages stay plain text.
+const startedWith = async (text) => {
+  const ui = await mount();
+  await ui.click('Start');
+  await reply(ui, 0, text);
+  return ui;
+};
+
+test('bold and a quote in a tutor reply render as strong and blockquote', async () => {
+  const ui = await startedWith('A **chloroplast** makes sugar.\n\n> Photosynthesis turns light into sugar.');
+  assert.equal(ui.container.querySelector('strong').textContent, 'chloroplast');
+  assert.equal(ui.container.querySelector('blockquote').textContent.trim(), 'Photosynthesis turns light into sugar.');
+  assert.ok(!ui.text().includes('**'));
+  await ui.unmount();
+});
+
+test('HTML in a tutor reply is shown as text and creates no element', async () => {
+  const ui = await startedWith('Look: <img src=x onerror=alert(1)> and <script>alert(2)</script> done.');
+  assert.equal(ui.container.querySelector('img'), null);
+  assert.equal(ui.container.querySelector('script'), null);
+  assert.match(ui.text(), /<img src=x onerror=alert\(1\)>/);
+  assert.match(ui.text(), /<script>alert\(2\)<\/script>/);
+  await ui.unmount();
+});
+
+test('every block of a tutor reply has dir="auto", tables scroll inside the message and links are safe', async () => {
+  const ui = await startedWith('First.\n\nSecond.\n\n- one\n- two\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n[docs](https://example.com)');
+  const li = ui.container.querySelector('ol > li');
+  const blocks = [...li.querySelectorAll('p, ul, ol, li, blockquote, table, th, td, pre, h3')].filter((el) => !el.closest('details'));
+  assert.ok(blocks.length >= 5);
+  for (const el of blocks) assert.equal(el.getAttribute('dir'), 'auto', el.tagName);
+  assert.ok(li.querySelector('table').parentElement.className.includes('overflow-x-auto'));
+  const a = li.querySelector('a');
+  assert.equal(a.getAttribute('rel'), 'noopener noreferrer');
+  assert.equal(a.getAttribute('target'), '_blank');
+  await ui.unmount();
+});
+
+test('a student message stays plain text', async () => {
+  const ui = await opened();
+  await send(ui, '**bold** <b>x</b>');
+  assert.equal(ui.container.querySelector('strong'), null);
+  assert.match(ui.text(), /\*\*bold\*\* <b>x<\/b>/);
+  await ui.unmount();
+});
+
+// The list is not a live region; one visually hidden polite region gets each finished reply once.
+const region = (ui) => ui.container.querySelector('[aria-live="polite"]');
+
+test('the live region receives a streamed reply once, when it finishes', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  const seen = []; // the region's text after every step: it must change exactly once
+  const look = () => seen.push(region(ui).textContent.trim());
+  assert.equal(ui.container.querySelectorAll('[aria-live]').length, 1);
+  assert.equal(ui.container.querySelector('ol').getAttribute('aria-live'), null);
+  look();
+  assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'true'); // waiting
+  const { stream } = ui.teach[0];
+  await ui.feed(() => { stream.start('id-1'); stream.text('Plants '); });
+  look();
+  assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'true'); // streaming
+  await ui.feed(() => { stream.text('eat **light**.'); });
+  look();
+  await ui.feed(() => stream.done());
+  look();
+  await ui.type('an unrelated render');
+  look();
+  assert.deepEqual(seen, ['', '', '', 'Plants eat light.', 'Plants eat light.']);
+  assert.equal(ui.container.querySelector('ol > li').getAttribute('aria-busy'), 'false');
+  await ui.unmount();
+});
+
+test('a reply restored as finished is not announced again', async () => {
+  const started = [{ type: 'fileRead', source: doc }, received, { type: 'lessonStarted' }, { type: 'teachStarted', stepId: 's1', transition: 'opening', chunkIds: ['c1'] }, { type: 'teachChunk', text: 'Back again.' }, { type: 'teachDone' }].reduce(reduce, initialLesson());
+  function Restored() {
+    const [lesson, dispatch] = React.useReducer(reduce, started);
+    return React.createElement(Lesson, { lesson, dispatch, settings, saveCount: 0, openSettings() {} });
+  }
+  const container = document.createElement('div'); document.body.append(container);
+  const root = createRoot(container);
+  await act(async () => root.render(React.createElement(Restored)));
+  assert.match(container.textContent, /Back again\./);
+  assert.equal(container.querySelector('[aria-live="polite"]').textContent, '');
+  await act(() => root.unmount());
+});
+
+test('an image in a tutor reply is dropped, so nothing loads from another site', async () => {
+  const ui = await startedWith('See ![diagram](https://example.com/x.png) here.');
+  assert.equal(ui.container.querySelector('img'), null);
+  await ui.unmount();
+});
+
+test('a stopped reply is announced; a failed one is not', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => { ui.teach[0].stream.start('id-1'); ui.teach[0].stream.text('Plants '); });
+  await ui.click('Stop');
+  assert.equal(region(ui).textContent.trim(), 'Plants');
+  await ui.click('Regenerate');
+  await ui.feed(() => { ui.teach[1].stream.start('id-2'); ui.teach[1].stream.text('Half'); ui.teach[1].stream.fail('rate_limited'); });
+  assert.equal(region(ui).textContent.trim(), '');
+  await ui.unmount();
+});
