@@ -97,12 +97,12 @@ export default function ModelSettings({ ref, onSettings, onSaved }) {
 
   const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ${{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}`;
   return <>
-    <button ref={trigger} onClick={open} className="btn btn-secondary mt-3 rounded-full text-sm"><span aria-live="polite">{pill}</span><span className="sr-only"> — Open model settings</span></button>
+    <button ref={trigger} onClick={open} className="btn btn-secondary chip mt-3 text-sm"><span aria-live="polite">{pill}</span><span className="sr-only"> — Open model settings</span></button>
     {notices[settings.code] && <p role="status" className="mt-2 text-sm text-warning">{notices[settings.code]}</p>}
     {storageWarning && <p role="status" className="mt-2 text-sm text-warning">{storageWarning}</p>}
     <dialog ref={dialog} onKeyDown={containFocus} aria-labelledby="settings-title" onCancel={cancelCheck} onClose={() => { cancelCheck(); trigger.current?.focus(); }} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl p-5 shadow-xl">
       <form onSubmit={save} className="flex min-w-0 flex-col gap-4">
-        <div className="flex items-center justify-between gap-3"><h2 id="settings-title" className="text-xl font-black tracking-tight">Model settings</h2><button type="button" onClick={close} aria-label="Close settings" className="btn btn-secondary">Close</button></div>
+        <div className="flex items-center justify-between gap-3"><h2 id="settings-title" className="heading text-xl">Model settings</h2><button type="button" onClick={close} aria-label="Close settings" className="btn btn-secondary">Close</button></div>
         {storageWarning && <p role="status" className="text-sm text-warning">{storageWarning}</p>}
         <label className="flex flex-col gap-1">Preset<select autoFocus value={draft.preset} onChange={e => change({preset:e.target.value,evaluator:PRESETS[e.target.value].evaluator,teacher:PRESETS[e.target.value].teacher})} className="field w-full p-2">{Object.entries(PRESETS).map(([id,p]) => <option key={id} value={id}>{p.name}</option>)}</select></label>
         <div><label htmlFor="model-key" className="block">API key</label><div className="mt-1 flex gap-2"><input id="model-key" type={showKey ? 'text' : 'password'} value={draft.apiKey} onChange={e => change({apiKey:e.target.value})} autoComplete="off" required aria-invalid={error?.field === 'apiKey'} aria-describedby={error?.field === 'apiKey' ? 'settings-error' : undefined} className="field min-w-0 flex-1 p-2"/><button type="button" aria-pressed={showKey} onClick={() => setShowKey(v=>!v)} className="btn btn-secondary">{showKey ? 'Hide' : 'Show'}</button></div><a href={preset.keyUrl} target="_blank" rel="noreferrer" className="text-sm underline">Get a key from {preset.name}</a></div>

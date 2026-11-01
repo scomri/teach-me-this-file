@@ -3,11 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 // The colour tokens in index.css, light (@theme) and dark (the prefers-color-scheme block), checked for
-// WCAG contrast. Text pairs need 4.5:1 (AA); focus rings and control borders need 3:1 (non-text contrast).
+// WCAG contrast. Text pairs need 4.5:1 (AA); focus rings, control borders and the accent rule need 3:1
+// (non-text contrast). Disabled controls are exempt under WCAG, so they are not listed.
 const css = readFileSync(new URL('./index.css', import.meta.url), 'utf8');
 const tokens = (block) => Object.fromEntries([...block.matchAll(/--color-([\w-]+):\s*(#[0-9a-f]{6})/gi)].map((m) => [m[1], m[2]]));
 const light = tokens(css.match(/@theme\s*{([^}]*)}/)[1]);
-const dark = { ...light, ...tokens(css.match(/prefers-color-scheme:\s*dark\)[^{]*{[^{]*{([^}]*)}/)[1]) };
+const darkOnly = tokens(css.match(/prefers-color-scheme:\s*dark\)[^{]*{[^{]*{([^}]*)}/)[1]);
+const dark = { ...light, ...darkOnly };
 
 function luminance(hex) {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
@@ -21,11 +23,13 @@ function contrast(a, b) {
 
 const TEXT = [
   ['text', 'canvas'], ['text', 'surface'], ['muted', 'canvas'], ['muted', 'surface'],
-  ['on-accent', 'accent-strong'], ['text', 'highlight'],
+  ['on-accent', 'accent-strong'], ['on-accent', 'accent-hover'], ['text', 'highlight'],
   ['danger', 'canvas'], ['danger', 'surface'], ['text', 'danger-tint'],
   ['warning', 'canvas'], ['warning', 'surface'], ['text', 'warning-tint'],
 ];
-const NON_TEXT = [['focus', 'canvas'], ['focus', 'surface'], ['border-strong', 'canvas'], ['border-strong', 'surface']];
+// Secondary buttons sit on canvas, surface and both notice tints, so their border and focus ring are checked on each.
+const NON_TEXT = ['canvas', 'surface', 'warning-tint', 'danger-tint'].flatMap((bg) => [['focus', bg], ['border-strong', bg]])
+  .concat([['accent', 'canvas'], ['accent', 'surface']]);
 
 for (const [mode, t] of [['light', light], ['dark', dark]]) {
   test(`${mode} token pairs meet WCAG AA`, () => {
@@ -40,6 +44,5 @@ for (const [mode, t] of [['light', light], ['dark', dark]]) {
 }
 
 test('dark mode redefines every colour token', () => {
-  const darkOnly = tokens(css.match(/prefers-color-scheme:\s*dark\)[^{]*{[^{]*{([^}]*)}/)[1]);
   assert.deepEqual(Object.keys(darkOnly).sort(), Object.keys(light).sort());
 });

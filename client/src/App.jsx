@@ -60,7 +60,7 @@ export default function App() {
   }
   return (
     <main className="mx-auto max-w-xl p-8">
-      <h1 className="text-3xl font-black tracking-tight">Teach Me This File</h1>
+      <h1 className="heading text-2xl">Teach Me This File</h1>
       <ModelSettings
         ref={settingsRef}
         onSettings={setSettings}

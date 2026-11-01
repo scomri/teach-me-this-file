@@ -21,7 +21,7 @@ export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate,
   const notes = requestNotes(plan, constraints);
   return (
     <article className="mt-6">
-      <h2 dir="auto" className="text-xl font-black tracking-tight">{plan.title}</h2>
+      <h2 dir="auto" className="heading text-xl">{plan.title}</h2>
       <p className="mt-1 text-sm text-muted">
         {plan.steps.length} {plan.steps.length === 1 ? 'step' : 'steps'} · about {estimatedMinutes(plan)} min
         {facts.length > 0 && ` · ${facts.join(' · ')}`}
@@ -32,14 +32,14 @@ export default function PlanScreen({ plan, constraints, doc, busy, onRegenerate,
         </p>
       )}
       {notes.map((note) => (
-        <p key={note} role="note" className="mt-2 rounded-md border border-border bg-canvas p-2 text-sm">{note}</p>
+        <p key={note} role="note" className="card mt-2 bg-canvas p-2 text-sm">{note}</p>
       ))}
 
       <ol className="mt-4 space-y-4">
         {plan.steps.map((step, i) => {
           const pages = sourcePages(step, doc);
           return (
-            <li key={step.id} className="rounded-md border border-border bg-surface p-3">
+            <li key={step.id} className="card p-3">
               <h3 dir="auto" className="font-medium">{i + 1}. {step.title}</h3>
               <p dir="auto" className="mt-1 text-sm">{step.objective}</p>
               <p dir="auto" className="mt-2 text-sm"><span className="font-medium">Check question:</span> {step.checkQuestion}</p>

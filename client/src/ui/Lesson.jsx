@@ -3,7 +3,7 @@ import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
-import { detectScript } from '../ingest/script.js';
+import { textDir } from '../ingest/script.js';
 import { reduce } from '../lesson/lesson.js';
 import { checkPlan, sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
@@ -27,10 +27,10 @@ const FALLBACK = "The tutor couldn't reply. Try again.";
 // dropped, so a reply cannot load anything from another site.
 const element = (Tag, props) => ({ node, ...rest }) => <Tag {...props} {...rest} />;
 const block = (Tag, className) => element(Tag, { dir: 'auto', className });
-const heading = (Tag) => block(Tag, 'font-black tracking-tight');
+const heading = (Tag) => block(Tag, 'heading');
 // A quote's direction comes from its text: dir="auto" would skip its paragraphs, which set their own.
-const text = (node) => node.value ?? node.children?.map(text).join('') ?? '';
-const quote = ({ node, ...rest }) => <blockquote {...rest} dir={detectScript(text(node)).rtl ? 'rtl' : 'ltr'} className="tutor-source-quote" />;
+const nodeText = (node) => node.value ?? node.children?.map(nodeText).join('') ?? '';
+const quote = ({ node, ...rest }) => <blockquote {...rest} dir={textDir(nodeText(node))} className="tutor-source-quote" />;
 const COMPONENTS = {
   p: block('p'), li: block('li'), ul: block('ul', 'list-disc list-inside'), ol: block('ol', 'list-decimal list-inside'),
   h1: heading('h3'), h2: heading('h3'), h3: heading('h3'), h4: heading('h4'), h5: heading('h5'), h6: heading('h6'),
@@ -224,19 +224,19 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   return (
     <section className="mt-6">
-      <h2 dir="auto" className="text-xl font-black tracking-tight">{plan.title}</h2>
+      <h2 dir="auto" className="heading text-xl">{plan.title}</h2>
       <p className="mt-1 text-sm text-muted">Step {index + 1} of {plan.steps.length}</p>
       {!plan.validated && <div role="status" className="mt-3 notice notice-warning text-sm">
         <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
-        <button className="underline disabled:opacity-40" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
-        {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}</p>}
+        <button className="btn btn-secondary mt-2" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
+        {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>}</p>}
       </div>}
 
       <ol className="mt-4 space-y-3">
         {messages.map((m, i) => {
           if (m.role === 'student') {
             return (
-              <li key={i} className="rounded-md border border-border bg-canvas p-3">
+              <li key={i} className="card bg-canvas p-3">
                 <p className="text-xs font-medium text-muted">You</p>
                 <p dir="auto" className="whitespace-pre-wrap">{m.text}</p>
               </li>
@@ -244,7 +244,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
           }
           const pages = sourcePages(m, source);
           return (
-            <li key={i} className="min-w-0 rounded-md border border-border bg-surface p-3" aria-busy={m.status === 'streaming'}>
+            <li key={i} className="card min-w-0 p-3" aria-busy={m.status === 'streaming'}>
               {m.text ? <div className="min-w-0 space-y-2"><Reply>{m.text}</Reply></div> : m.status === 'streaming' && <p dir="auto">Preparing reply…</p>}
               {m.status === 'stopped' && <p className="mt-1 text-xs text-muted">Stopped.</p>}
               {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-muted">
@@ -262,7 +262,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       {errorCode && (last?.status === 'failed' || pendingAnswer) && (
         <p role="alert" className="mt-3 notice notice-danger text-sm">
           {(errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
-          {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="underline" onClick={openSettings}>Open Settings</button>}
+          {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>}
         </p>
       )}
 
@@ -276,7 +276,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       <div className="mt-4">
         <label className="block text-sm font-medium" htmlFor="answer">Your answer</label>
         <textarea
-          id="answer" className="field mt-1 w-full p-2 disabled:opacity-40" rows={2}
+          id="answer" className="field mt-1 w-full p-2" rows={2}
           value={draft} onChange={(e) => setDraft(e.target.value)} disabled={!canAnswer} aria-describedby="answer-count"
         />
         <div className="mt-1 flex items-center justify-between gap-2">

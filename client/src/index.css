@@ -2,9 +2,11 @@
 
 /* Semantic colour tokens: components use these names only, so dark mode is a value swap below.
    Hex values on the Tailwind neutral scale with a coral accent; tokens.test.js checks each text pair for WCAG AA.
-   accent (#ef4d4d) is for tints, borders, chips and focus; white text sits on accent-strong (#dc2626). */
+   accent (#ef4d4d) is for borders, chips, the quote rule and focus, and highlight is its tint; white text sits
+   on accent-strong (#dc2626), and on accent-hover when a primary button is hovered. */
 @theme {
-  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Hebrew", "Arial Hebrew", "Noto Sans Arabic", Tahoma, sans-serif;
+  /* Geist has no Hebrew or Arabic glyphs; those fonts come before the system UI fonts so they are the ones used. */
+  --font-sans: "Geist", "Noto Sans Hebrew", "Arial Hebrew", "Noto Sans Arabic", Tahoma, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   --color-canvas: #fafafa;
   --color-surface: #ffffff;
@@ -14,6 +16,7 @@
   --color-border-strong: #737373;
   --color-accent: #ef4d4d;
   --color-accent-strong: #dc2626;
+  --color-accent-hover: #b91c1c;
   --color-on-accent: #ffffff;
   --color-highlight: #fdd8d8;
   --color-danger: #b91c1c;
@@ -21,8 +24,11 @@
   --color-warning: #92400e;
   --color-warning-tint: #fffbeb;
   --color-focus: #ef4d4d;
+  --color-scrim: #171717;
 }
 
+/* Every token is restated here, even where dark keeps the light value (accent, on-accent, focus...), so this block
+   alone shows the whole dark palette; tokens.test.js fails if one is missing. */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-canvas: #0a0a0a;
@@ -33,6 +39,7 @@
     --color-border-strong: #737373;
     --color-accent: #ef4d4d;
     --color-accent-strong: #dc2626;
+    --color-accent-hover: #b91c1c;
     --color-on-accent: #ffffff;
     --color-highlight: #5c2323;
     --color-danger: #f87171;
@@ -40,6 +47,7 @@
     --color-warning: #fbbf24;
     --color-warning-tint: #261d08;
     --color-focus: #ef4d4d;
+    --color-scrim: #000000;
   }
 }
 
@@ -47,7 +55,9 @@
   :root { color-scheme: light dark; }
   body { background: var(--color-canvas); color: var(--color-text); font-family: var(--font-sans); }
   dialog { background: var(--color-surface); color: var(--color-text); }
-  dialog::backdrop { background: rgb(0 0 0 / 0.5); }
+  dialog::backdrop { background: color-mix(in srgb, var(--color-scrim) 50%, transparent); }
+  /* Placeholders show the preset model names, so they get muted text at full strength, not Tailwind's 50%. */
+  ::placeholder { color: var(--color-muted); opacity: 1; }
   /* Every control gets the same ring; the offset keeps it off the control's own fill. */
   :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 }
@@ -61,13 +71,18 @@
     font-weight: 500;
     transition: background-color 150ms, border-color 150ms;
   }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn:disabled, .field:disabled { opacity: 0.4; cursor: not-allowed; }
   .btn-primary { background: var(--color-accent-strong); color: var(--color-on-accent); }
   .btn-secondary { border-color: var(--color-border-strong); color: var(--color-text); }
   @media (hover: hover) {
-    .btn-primary:hover:enabled { background: color-mix(in srgb, var(--color-accent-strong) 88%, black); }
+    .btn-primary:hover:enabled { background: var(--color-accent-hover); }
     .btn-secondary:hover:enabled { background: var(--color-canvas); border-color: var(--color-text); }
   }
+
+  .chip { border-radius: 9999px; border-color: var(--color-accent); }
+
+  .heading { font-weight: 900; letter-spacing: -0.025em; }
+  .card { border-radius: 0.375rem; border: 1px solid var(--color-border); background: var(--color-surface); }
 
   .field { border-radius: 0.375rem; border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-text); }
 

@@ -110,13 +110,13 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         {status === 'key_rejected' && (
           <p role="alert" className="mt-3 notice notice-danger text-sm">
             Your key was rejected.{' '}
-            <button className="underline" onClick={openSettings}>Open Settings</button>
+            <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>
           </p>
         )}
         {['error', 'check_key_rejected'].includes(status) && (
           <p role="alert" className="mt-3 notice notice-danger text-sm">
             {state.code === 'invalid_key' ? 'Your key was rejected.' : state.code === 'model_not_found' && state.role === 'evaluator' ? "The evaluator model wasn't found or isn't available for this key. Check the model settings." : MESSAGES[state.code] ?? FALLBACK}{' '}
-            {['invalid_key', 'model_not_found'].includes(state.code) && <button className="underline" onClick={openSettings}>Open Settings</button>}
+            {['invalid_key', 'model_not_found'].includes(state.code) && <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>}
           </p>
         )}
       </div>

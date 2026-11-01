@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { ACCEPTED, IngestError, ingestFile } from '../ingest/ingest.js';
-import { detectScript } from '../ingest/script.js';
+import { textDir } from '../ingest/script.js';
 import { MAX_FILE_MB } from '../../../shared/limits.js';
 
 const SHOWN = 200; // ponytail: dev view; a 20 MB file has ~14k chunks, too many to render at once
@@ -97,9 +97,9 @@ export default function FileIngest({ onDoc, confirmPick }) {
           </summary>
           <ol className="mt-2 space-y-2">
             {doc.chunks.slice(0, SHOWN).map((c) => (
-              <li key={c.id} className="rounded-md border border-border bg-surface p-2">
+              <li key={c.id} className="card p-2">
                 <p className="text-xs text-muted">{where(c, doc.kind)}</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm" dir={detectScript(c.text).rtl ? 'rtl' : 'ltr'}>
+                <p className="mt-1 whitespace-pre-wrap text-sm" dir={textDir(c.text)}>
                   {c.text}
                 </p>
               </li>
