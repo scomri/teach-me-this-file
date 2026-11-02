@@ -16,6 +16,7 @@ globalThis.HTMLElement = window.HTMLElement;
 const vite = await createServer({ configFile: false, root: fileURLToPath(new URL('../..', import.meta.url)), plugins: [react()], appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' });
 const { default: PlanLesson } = await vite.ssrLoadModule('/src/ui/PlanLesson.jsx');
 const { default: Lesson } = await vite.ssrLoadModule('/src/ui/Lesson.jsx');
+const { default: Header } = await vite.ssrLoadModule('/src/ui/Header.jsx');
 test.after(() => vite.close());
 
 const doc = { kind: 'pdf', chunks: [{ id: 'c1', page: 2, text: 'Photosynthesis turns light into sugar.' }, { id: 'c2', page: 3, text: 'Chlorophyll absorbs light.' }] };
@@ -30,12 +31,12 @@ const received = {
 let planEvent = received; // a test may swap the plan before mounting
 const settings = { preset: 'gemini', apiKey: 'k', teacher: 'm' };
 
-// App's choice of screen: the plan until the lesson starts, then the chat.
+// App's choice of screen: the plan until the lesson starts, then the chat. The header shows the step chip.
 function Host(props) {
   const [lesson, dispatch] = React.useReducer(reduce, undefined, () => [{ type: 'fileRead', source: doc }, planEvent].reduce(reduce, initialLesson()));
-  return lesson.progress
+  return React.createElement(React.Fragment, null, React.createElement(Header, { lesson }), lesson.progress
     ? React.createElement(Lesson, { ...props, lesson, dispatch })
-    : React.createElement(PlanLesson, { ...props, lesson, dispatch, saveCount: 0 });
+    : React.createElement(PlanLesson, { ...props, lesson, dispatch, saveCount: 0 }));
 }
 
 // A teach response the test feeds by hand. Aborting the request errors it, as fetch does.

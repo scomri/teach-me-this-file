@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { initialLesson, reduce } from './lesson.js';
+import { currentStepIndex, initialLesson, lessonDone, reduce, screenOf, stepSettled } from './lesson.js';
 
 const doc = { kind: 'txt', name: 'a.txt', chunks: [{ id: 'c1', page: null, text: 'Photosynthesis.' }] };
 const plan = { title: 'A lesson', steps: [{ id: 's1', title: 'One', objective: 'o', chunkIds: ['c1'], checkQuestion: 'q?', expected: ['p'] }] };
@@ -319,6 +319,24 @@ test('a correct answer on the last step is a recap, and the lesson has nothing l
   assert.equal(step(s, 's1').status, 'mastered');
   assert.equal(s.progress.current, 's1');
   assert.equal(reduce(s, { type: 'answerSent', text: 'more' }), s);
+});
+
+test('the lesson is done once its recap starts: after the last step is mastered, or after Continue on a revealed last step', () => {
+  assert.equal(lessonDone(planned(plan)), false);
+  assert.equal(lessonDone(opened(plan)), false);
+  assert.equal(lessonDone(answer(opened(plan), 'p', ans(0))), true);
+  const revealed = answer(answer(opened(plan), 'x', ans()), 'y', ans());
+  assert.equal(lessonDone(revealed), false); // the reveal is still on screen, waiting for Continue
+  assert.equal(lessonDone(reduce(revealed, { type: 'teachStarted', stepId: 's1', transition: 'recap', chunkIds: [] })), true);
+});
+
+test('the screen follows from the state, and the current step index from progress', () => {
+  assert.equal(screenOf(initialLesson()), 'setup');
+  assert.equal(screenOf(planned(plan)), 'plan');
+  assert.equal(screenOf(opened(plan)), 'lesson');
+  assert.equal(screenOf(answer(opened(plan), 'p', ans(0))), 'done');
+  assert.equal(currentStepIndex(answer(opened(), 'a and b', ans(0, 1))), 1);
+  assert.deepEqual(['pending', 'active', 'mastered', 'revealed'].map(stepSettled), [false, false, true, true]);
 });
 
 test('the reply step is the progress step after evaluated: the next step on an advance, else the answered one', () => {

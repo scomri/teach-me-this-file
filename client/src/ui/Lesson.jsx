@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
 import { requestEvaluation } from '../evaluate.js';
 import { textDir } from '../ingest/script.js';
-import { reduce } from '../lesson/lesson.js';
+import { lessonDone, reduce } from '../lesson/lesson.js';
 import { checkPlan, sourcePages } from '../plan.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
 
@@ -217,15 +217,16 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   }, [last?.role, last?.status]);
   const streaming = last?.status === 'streaming';
   const pendingAnswer = last?.role === 'student' && last.intent === null;
-  const index = plan.steps.findIndex((s) => s.id === progress.current);
   const canAnswer = progress.steps[progress.current].status === 'active' && !!last && !pendingAnswer && !evaluating && (last.role === 'student' || ['done', 'stopped'].includes(last.status));
   const canContinue = progress.steps[progress.current].status === 'revealed' && last?.transition === 'reveal' && ['done', 'stopped'].includes(last.status);
   const over = draft.length > MAX_ANSWER_CHARS;
 
   return (
     <section className="mt-6">
-      <h2 dir="auto" className="heading text-xl">{plan.title}</h2>
-      <p className="mt-1 text-sm text-muted">Step {index + 1} of {plan.steps.length}</p>
+      <h1 tabIndex={-1} className="heading text-2xl">
+        <span dir="auto" className="block">{plan.title}</span>
+        {lessonDone(lesson) && <span className="mt-1 block text-sm font-medium tracking-normal text-muted">Lesson complete</span>}
+      </h1>
       {!plan.validated && <div role="status" className="mt-3 notice notice-warning text-sm">
         <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
         <button className="btn btn-secondary mt-2" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>

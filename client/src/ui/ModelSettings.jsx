@@ -95,11 +95,13 @@ export default function ModelSettings({ ref, onSettings, onSaved }) {
     setSettings(next); setDraft(next); onSaved?.(next); close();
   }
 
-  const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : `${PRESETS[settings.preset].name} · ${{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}`;
+  // Below `sm` the pill shows the status only; the preset name stays for screen readers.
+  const pill = settings.code === 'invalid_key' ? 'Key rejected' : !settings.apiKey ? 'No key' : <><span className="max-sm:sr-only">{PRESETS[settings.preset].name} · </span>{{rate_limited:'rate-limited',unreachable:'not verified'}[settings.code] ?? 'ready'}</>;
+  // The pill sits in the header; the notices wrap onto their own line below it.
   return <>
-    <button ref={trigger} onClick={open} className="btn btn-secondary chip mt-3 text-sm"><span aria-live="polite">{pill}</span><span className="sr-only"> — Open model settings</span></button>
-    {notices[settings.code] && <p role="status" className="mt-2 text-sm text-warning">{notices[settings.code]}</p>}
-    {storageWarning && <p role="status" className="mt-2 text-sm text-warning">{storageWarning}</p>}
+    <button ref={trigger} onClick={open} className="btn btn-secondary chip min-h-11 shrink-0 whitespace-nowrap text-sm"><span aria-live="polite">{pill}</span><span className="sr-only"> — Open model settings</span></button>
+    {notices[settings.code] && <p role="status" className="order-last basis-full text-sm text-warning">{notices[settings.code]}</p>}
+    {storageWarning && <p role="status" className="order-last basis-full text-sm text-warning">{storageWarning}</p>}
     <dialog ref={dialog} onKeyDown={containFocus} aria-labelledby="settings-title" onCancel={cancelCheck} onClose={() => { cancelCheck(); trigger.current?.focus(); }} className="m-auto max-h-[90dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl p-5 shadow-xl">
       <form onSubmit={save} className="flex min-w-0 flex-col gap-4">
         <div className="flex items-center justify-between gap-3"><h2 id="settings-title" className="heading text-xl">Model settings</h2><button type="button" onClick={close} aria-label="Close settings" className="btn btn-secondary">Close</button></div>
