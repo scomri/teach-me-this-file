@@ -1,10 +1,12 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { initialLesson, reduce, normalizeSaved } from './lesson/lesson.js';
+import { initialLesson, lessonDone, reduce, normalizeSaved } from './lesson/lesson.js';
 import { clearSaved, loadSaved, putSaved, shouldSave } from './lesson/persist.js';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
+import Header from './ui/Header.jsx';
 import Lesson from './ui/Lesson.jsx';
 import PlanLesson from './ui/PlanLesson.jsx';
+import StepOutline from './ui/StepOutline.jsx';
 
 // lessonRestored swaps in the lesson loaded at startup; the lesson reducer itself does not know about storage.
 const reduceApp = (state, event) => (event.type === 'lessonRestored' ? event.lesson : reduce(state, event));
@@ -58,21 +60,39 @@ export default function App() {
     setRestored(false);
     setFresh((n) => n + 1);
   }
-  return (
-    <main className="mx-auto max-w-xl p-8">
-      <h1 className="heading text-2xl">Teach Me This File</h1>
-      <ModelSettings
-        ref={settingsRef}
-        onSettings={setSettings}
-        onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
-      />
 
-      {lessonNotice && <p role="status" className="mt-2 text-sm text-warning">{lessonNotice}</p>}
-      {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
-      {restored && lesson.source && <p className="mt-2 text-sm text-muted">Restored your lesson on {lesson.source.name}.</p>}
-      {(lesson.source || lesson.teacher.prompt) && <button type="button" className="btn btn-secondary mt-2 text-sm" onClick={newLesson}>New lesson</button>}
-      {loaded && lesson.progress && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
-      {loaded && lesson.source && settings && !lesson.progress && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
-    </main>
+  // When the screen changes, focus moves to its h1. Not on the first screen after loading (the settings dialog may
+  // be open), and the done screen keeps the scroll position, so the recap being read stays in view.
+  const screen = !loaded ? null : lesson.progress ? (lessonDone(lesson) ? 'done' : 'lesson') : lesson.source ? 'plan' : 'setup';
+  const shown = useRef(null);
+  useEffect(() => {
+    const prev = shown.current;
+    shown.current = screen;
+    if (!prev || prev === screen || document.querySelector('dialog[open]')) return;
+    document.querySelector('main h1')?.focus({ preventScroll: screen === 'done' });
+  }, [screen]);
+  const inLesson = screen === 'lesson' || screen === 'done';
+
+  return (
+    <>
+      <Header lesson={lesson} onNewLesson={lesson.source || lesson.teacher.prompt ? newLesson : undefined}>
+        <ModelSettings
+          ref={settingsRef}
+          onSettings={setSettings}
+          onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
+        />
+      </Header>
+      <main className={`mx-auto max-w-xl px-4 pb-12 pt-6 ${inLesson ? 'md:grid md:max-w-4xl md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8' : ''}`}>
+        {inLesson && <StepOutline lesson={lesson} />}
+        <div className="min-w-0">
+          {(screen === 'setup' || screen === 'plan') && <h1 tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}
+          {lessonNotice && <p role="status" className="mt-2 text-sm text-warning">{lessonNotice}</p>}
+          {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
+          {restored && lesson.source && <p className="mt-2 text-sm text-muted">Restored your lesson on {lesson.source.name}.</p>}
+          {inLesson && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
+          {screen === 'plan' && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
+        </div>
+      </main>
+    </>
   );
 }

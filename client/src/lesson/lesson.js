@@ -128,6 +128,9 @@ export function reduce(state, event) {
   }
 }
 
+// The recap has started: the last step was mastered, or Continue was pressed after its answer was shown.
+export const lessonDone = (state) => !!state.progress && state.messages.some((m) => m.transition === 'recap');
+
 // Persistence helpers (pure). The record is the lesson state and nothing else: never the API key or settings.
 export const savedRecord = (s) => ({ version: s.version, source: s.source, teacher: s.teacher, plan: s.plan, progress: s.progress, messages: s.messages });
 

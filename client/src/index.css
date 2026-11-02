@@ -8,6 +8,9 @@
   /* Geist has no Hebrew or Arabic glyphs; those fonts come before the system UI fonts so they are the ones used. */
   --font-sans: "Geist", "Noto Sans Hebrew", "Arial Hebrew", "Noto Sans Arabic", Tahoma, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
+  /* 720px: the step outline moves from the progress bar into a side column (StepOutline.jsx reads the same width). */
+  --breakpoint-md: 45rem;
+
   --color-canvas: #fafafa;
   --color-surface: #ffffff;
   --color-text: #171717;
@@ -53,7 +56,15 @@
 
 @layer base {
   :root { color-scheme: light dark; }
-  body { background: var(--color-canvas); color: var(--color-text); font-family: var(--font-sans); }
+  /* The notebook canvas: a faint graph-paper grid drawn from the border token, so it follows dark mode. */
+  body {
+    --grid: color-mix(in srgb, var(--color-border) 50%, transparent);
+    background-color: var(--color-canvas);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 1.5rem 1.5rem;
+    color: var(--color-text);
+    font-family: var(--font-sans);
+  }
   dialog { background: var(--color-surface); color: var(--color-text); }
   dialog::backdrop { background: color-mix(in srgb, var(--color-scrim) 50%, transparent); }
   /* Placeholders show the preset model names, so they get muted text at full strength, not Tailwind's 50%. */
@@ -89,6 +100,19 @@
   .notice { border-radius: 0.375rem; border: 1px solid; padding: 0.5rem; color: var(--color-text); }
   .notice-warning { border-color: var(--color-warning); background: var(--color-warning-tint); }
   .notice-danger { border-color: var(--color-danger); background: var(--color-danger-tint); }
+
+  /* The step outline's progress bar (StepOutline.jsx). Each status differs in shape as well as colour:
+     filled, striped, outlined in accent, or outlined in grey. */
+  .step-segment { height: 0.625rem; flex: 1; border-radius: 9999px; border: 1px solid var(--color-border-strong); }
+  .step-segment-mastered { background: var(--color-accent-strong); border-color: var(--color-accent-strong); }
+  .step-segment-revealed {
+    background: repeating-linear-gradient(45deg, var(--color-accent-strong) 0 2px, transparent 2px 5px);
+    border-color: var(--color-accent-strong);
+  }
+  .step-segment-active { border: 2px solid var(--color-accent); }
+  summary::-webkit-details-marker { display: none; }
+  .step-chevron { display: inline-block; transition: transform 150ms; }
+  [open] > summary .step-chevron { transform: rotate(90deg); }
 
   /* Tutor replies (Lesson.jsx): bold key terms as a highlighter mark, quotes as the "From your file" box.
      The box's rule sits on the inline-start side, so it moves to the right in a right-to-left reply. */
