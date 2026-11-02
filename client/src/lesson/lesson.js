@@ -87,6 +87,8 @@ export function reduce(state, event) {
       if (!progress || progress.steps[progress.current].status !== 'active' || pendingAnswer(state) || (lastTutor(state) && !['done', 'stopped'].includes(lastTutor(state).status))) return state;
       return { ...state, messages: [...state.messages, { role: 'student', stepId: progress.current, text: event.text, intent: null }] };
     }
+    case 'answerWithdrawn': // Stop while the answer is read: it goes back to the composer
+      return pendingAnswer(state) ? { ...state, messages: state.messages.slice(0, -1) } : state;
     case 'evaluated': { // sets the intent, and applies the move to progress before the reply streams
       if (!pendingAnswer(state)) return state;
       const g = grade(state, event.evaluation);

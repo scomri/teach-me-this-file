@@ -84,7 +84,7 @@ export default function App() {
           onSaved={(saved) => { setSettings(saved); setSaveCount((n) => n + 1); }}
         />
       </Header>
-      <main className={`mx-auto max-w-xl px-4 pb-12 pt-6 ${inLesson ? 'md:grid md:max-w-4xl md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8' : ''}`}>
+      <main className={`mx-auto max-w-xl px-4 pt-6 ${inLesson ? 'md:grid md:max-w-4xl md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8' : 'pb-12'}`}>
         {inLesson && <StepOutline lesson={lesson} />}
         <div className="min-w-0">
           {(screen === 'setup' || screen === 'plan') && <h1 key={screen} tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}

@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { MAX_ANSWER_CHARS } from '../../../shared/limits.js';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { protectsUnansweredPoints } from '../../../shared/transitions.js';
 import { requestEvaluation } from '../evaluate.js';
-import { textDir } from '../ingest/script.js';
 import { lessonDone, reduce } from '../lesson/lesson.js';
-import { checkPlan, sourcePages } from '../plan.js';
+import { checkPlan } from '../plan.js';
+import { nearBottom } from '../scroll.js';
 import { cancelStream, streamTeach, teachRequest } from '../teach.js';
+import Composer from './Composer.jsx';
+import { Reply } from './Message.jsx';
+import MessageList from './MessageList.jsx';
+import StatusLine from './StatusLine.jsx';
 
 const MESSAGES = {
   invalid_key: 'Your key was rejected.',
@@ -19,28 +21,6 @@ const MESSAGES = {
 };
 const EVALUATOR_NOT_FOUND = "The evaluator model wasn't found or isn't available for this key. Check the model settings.";
 const FALLBACK = "The tutor couldn't reply. Try again.";
-
-// Tutor text is Markdown with raw HTML off (react-markdown shows it as text), so no sanitizer is needed.
-// Every block gets dir="auto" so a Hebrew reply reads right to left (lists use inside markers because a
-// container's auto direction ignores children that set their own dir, so the item decides). `strong` and `blockquote` carry class
-// names that index.css styles as the key-term highlighter and the "From your file" quote box; images are
-// dropped, so a reply cannot load anything from another site.
-const element = (Tag, props) => ({ node, ...rest }) => <Tag {...props} {...rest} />;
-const block = (Tag, className) => element(Tag, { dir: 'auto', className });
-const heading = (Tag) => block(Tag, 'heading');
-// A quote's direction comes from its text: dir="auto" would skip its paragraphs, which set their own.
-const nodeText = (node) => node.value ?? node.children?.map(nodeText).join('') ?? '';
-const quote = ({ node, ...rest }) => <blockquote {...rest} dir={textDir(nodeText(node))} className="tutor-source-quote" />;
-const COMPONENTS = {
-  p: block('p'), li: block('li'), ul: block('ul', 'list-disc list-inside'), ol: block('ol', 'list-decimal list-inside'),
-  h1: heading('h3'), h2: heading('h3'), h3: heading('h3'), h4: heading('h4'), h5: heading('h5'), h6: heading('h6'),
-  pre: block('pre', 'overflow-x-auto'), th: block('th'), td: block('td'),
-  blockquote: quote,
-  strong: element('strong', { className: 'tutor-key-term' }),
-  a: element('a', { target: '_blank', rel: 'noopener noreferrer', className: 'underline' }),
-  table: ({ node, ...props }) => <div className="overflow-x-auto"><table dir="auto" {...props} /></div>,
-};
-const Reply = ({ children }) => <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS} disallowedElements={['img']}>{children}</Markdown>;
 
 // The lesson chat. The messages and progress live in the lesson state (`lesson`, `dispatch`); this
 // component keeps the requests in flight, the draft and the last error. It dispatches events and renders state.
@@ -57,6 +37,22 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   const grading = useRef(null); // the evaluation in flight: its AbortController
   const latest = useRef({});
   latest.current = { lesson, settings };
+  const [offline, setOffline] = useState(() => globalThis.navigator?.onLine === false);
+  // Cold start: until a request on this screen has been answered, a wait of 3 seconds adds "Waking the server…".
+  const [waking, setWaking] = useState(false);
+  const heard = useRef(false);
+  const wakeTimer = useRef(null);
+  const [following, setFollowing] = useState(true); // the page follows new text while the student reads its end
+
+  function awaitServer() {
+    if (!heard.current && !wakeTimer.current) wakeTimer.current = setTimeout(() => setWaking(true), 3000);
+  }
+  function stopWaiting(answered) {
+    if (answered) heard.current = true;
+    clearTimeout(wakeTimer.current);
+    wakeTimer.current = null;
+    setWaking(false);
+  }
 
   // `snapshot`: the lesson as this reply sees it. The reducer has not rendered an event dispatched a moment
   // ago, and a reply must see the progress that event applied.
@@ -66,11 +62,12 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     const sentKey = latest.current.settings.apiKey;
     current.current = run;
     setError(null);
+    awaitServer();
     try {
       const s = latest.current.settings;
       await streamTeach({
         request: { ...teachRequest({ lesson: snapshot, transition, settings: s, stepId }), rateLimitRetried }, apiKey: s.apiKey, signal: ac.signal, turnId,
-        onStart(id) { run.id = id; if (run.stopped) halt(run); },
+        onStart(id) { run.id = id; if (current.current === run) stopWaiting(true); if (run.stopped) halt(run); },
         onText: (text) => { if (current.current === run) dispatch({ type: 'teachChunk', text }); },
       });
       if (current.current === run) dispatch({ type: 'teachDone' });
@@ -81,7 +78,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       setError({ code: error.code, from: 'teacher', key: sentKey });
       if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
-      if (current.current === run) current.current = null;
+      if (current.current === run) { current.current = null; stopWaiting(false); }
     }
   }
 
@@ -91,7 +88,16 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     cancelStream(run.id).finally(() => run.ac.abort());
   }
 
+  // Stop while the answer is read withdraws it, back into the composer; Stop on a reply keeps what it has.
   function stop() {
+    stopWaiting(false);
+    if (grading.current) {
+      grading.current.abort();
+      grading.current = null;
+      setEvaluating(false);
+      setDraft(latest.current.lesson.messages.at(-1).text);
+      return dispatch({ type: 'answerWithdrawn' });
+    }
     const run = current.current;
     if (!run) return;
     run.stopped = true;
@@ -120,9 +126,11 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     grading.current = ac;
     setEvaluating(true);
     setError(null);
+    awaitServer();
     try {
       const { evaluation, rateLimitRetried } = await requestEvaluation({ lesson: base, message, settings: latest.current.settings, signal: ac.signal, turnId });
       if (grading.current !== ac) return;
+      stopWaiting(true);
       const event = { type: 'evaluated', evaluation };
       const after = reduce(base, event);
       dispatch(event);
@@ -137,13 +145,12 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       setError({ code: error.code, from: 'evaluator', key: sentKey });
       if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
-      if (grading.current === ac) { grading.current = null; setEvaluating(false); }
+      if (grading.current === ac) { grading.current = null; setEvaluating(false); stopWaiting(false); }
     }
   }
 
   function send() {
-    const message = draft.trim();
-    if (!message || draft.length > MAX_ANSWER_CHARS) return;
+    const message = draft.trim(); // Composer sends only a draft with text, within the limit
     setDraft('');
     const base = reduce(lesson, { type: 'answerSent', text: message });
     dispatch({ type: 'answerSent', text: message });
@@ -188,7 +195,17 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   useEffect(() => {
     if (!messages.length) open();
+    const online = () => setOffline(false);
+    const offline = () => setOffline(true);
+    const scrolled = () => setFollowing(nearBottom(document.documentElement));
+    window.addEventListener('online', online);
+    window.addEventListener('offline', offline);
+    window.addEventListener('scroll', scrolled, { passive: true });
     return () => {
+      window.removeEventListener('online', online);
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('scroll', scrolled);
+      clearTimeout(wakeTimer.current);
       planCheck.current?.abort();
       grading.current?.abort();
       grading.current = null;
@@ -219,7 +236,24 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
   const pendingAnswer = last?.role === 'student' && last.intent === null;
   const canAnswer = progress.steps[progress.current].status === 'active' && !!last && !pendingAnswer && !evaluating && (last.role === 'student' || ['done', 'stopped'].includes(last.status));
   const canContinue = progress.steps[progress.current].status === 'revealed' && last?.transition === 'reveal' && ['done', 'stopped'].includes(last.status);
-  const over = draft.length > MAX_ANSWER_CHARS;
+
+  // Protected replies are checked on the server before any text is sent, so their wait says so; reveals and the
+  // recap stream, and their wait ends with the first text.
+  const waitingFor = evaluating ? 'Reading your answer…'
+    : streaming && !last.text ? (protectsUnansweredPoints(last.transition) ? 'Writing and checking the reply…' : 'Writing the reply…') : '';
+  const status = [offline && "You're offline.", waitingFor, waking && 'Waking the server…'].filter(Boolean).join(' ');
+  const alert = errorCode && (last?.status === 'failed' || pendingAnswer)
+    && ((errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK);
+
+  // Scrolling: new text keeps the end in view only while the student is near it, so reading earlier messages
+  // is never interrupted; a new answer always jumps to the end. No smooth scrolling under reduced motion.
+  function toBottom(smooth) {
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo?.({ top: document.documentElement.scrollHeight, behavior: smooth && !still ? 'smooth' : 'auto' });
+  }
+  useLayoutEffect(() => {
+    if (following || last?.role === 'student') toBottom(false);
+  }, [messages.length, last?.text]);
 
   return (
     <section className="mt-6">
@@ -227,64 +261,32 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
         <span dir="auto" className="block">{plan.title}</span>
         {lessonDone(lesson) && <span className="mt-1 block text-sm font-medium tracking-normal text-muted">Lesson complete</span>}
       </h1>
-      {!plan.validated && <div role="status" className="mt-3 notice notice-warning text-sm">
+      {!plan.validated && <div className="mt-3 notice notice-warning text-sm">
         <p>This restored lesson has unchecked questions. Check them to include the question in a fallback reply.</p>
-        <button className="btn btn-secondary mt-2" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>{checkingPlan ? 'Checking…' : 'Check questions'}</button>
+        <button className="btn btn-secondary mt-2" onClick={validatePlan} disabled={checkingPlan || !settings.apiKey.trim()}>Check questions</button>
+        <p role="status">{checkingPlan && 'Checking questions…'}</p>
         {planError && <p role="alert">{planError.code === 'invalid_key' ? 'Your key was rejected.' : 'The questions could not be checked. Try again or start a new lesson.'} {['invalid_key', 'model_not_found'].includes(planError.code) && <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>}</p>}
       </div>}
 
-      <ol className="mt-4 space-y-3">
-        {messages.map((m, i) => {
-          if (m.role === 'student') {
-            return (
-              <li key={i} className="card bg-canvas p-3">
-                <p className="text-xs font-medium text-muted">You</p>
-                <p dir="auto" className="whitespace-pre-wrap">{m.text}</p>
-              </li>
-            );
-          }
-          const pages = sourcePages(m, source);
-          return (
-            <li key={i} className="card min-w-0 p-3" aria-busy={m.status === 'streaming'}>
-              {m.text ? <div className="min-w-0 space-y-2"><Reply>{m.text}</Reply></div> : m.status === 'streaming' && <p dir="auto">Preparing reply…</p>}
-              {m.status === 'stopped' && <p className="mt-1 text-xs text-muted">Stopped.</p>}
-              {m.chunkIds?.length > 0 && <details className="mt-2 text-sm text-muted">
-                <summary>Source{pages ? `: ${pages}` : ' passages'}</summary>
-                {source.chunks.filter((c) => m.chunkIds.includes(c.id)).map((c) => <p key={c.id} dir="auto" className="mt-2 whitespace-pre-wrap">{c.text}</p>)}
-              </details>}
-            </li>
-          );
-        })}
-      </ol>
+      <MessageList messages={messages} source={source} />
       <div className="sr-only" aria-live="polite"><Reply>{announced}</Reply></div>
 
-      {evaluating && <p role="status" className="mt-3 text-sm text-muted">Thinking…</p>}
-
-      {errorCode && (last?.status === 'failed' || pendingAnswer) && (
-        <p role="alert" className="mt-3 notice notice-danger text-sm">
-          {(errorCode === 'invalid_key' && settings.apiKey !== error.key ? 'The previous key was rejected. Retry with the new key.' : error.from === 'evaluator' && errorCode === 'model_not_found' ? EVALUATOR_NOT_FOUND : MESSAGES[errorCode]) ?? FALLBACK}{' '}
-          {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="btn btn-secondary ms-1" onClick={openSettings}>Open Settings</button>}
-        </p>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {streaming && <button className="btn btn-secondary" onClick={stop}>Stop</button>}
-        {(last?.status === 'failed' || (pendingAnswer && !evaluating)) && <button className="btn btn-primary" onClick={pendingAnswer ? retryAnswer : again}>Retry</button>}
-        {['done', 'stopped'].includes(last?.status) && <button className="btn btn-secondary" onClick={again}>Regenerate</button>}
-        {canContinue && <button className="btn btn-primary" onClick={proceed}>Continue</button>}
-      </div>
-
-      <div className="mt-4">
-        <label className="block text-sm font-medium" htmlFor="answer">Your answer</label>
-        <textarea
-          id="answer" className="field mt-1 w-full p-2" rows={2}
-          value={draft} onChange={(e) => setDraft(e.target.value)} disabled={!canAnswer} aria-describedby="answer-count"
-        />
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <p id="answer-count" className={`text-sm ${over ? 'text-danger' : 'text-muted'}`}>
-            {draft.length} / {MAX_ANSWER_CHARS}{over && ' (too long, shorten it to send)'}
-          </p>
-          <button className="btn btn-primary" onClick={send} disabled={!canAnswer || !draft.trim() || over}>Send</button>
+      <div className="sticky bottom-0 mt-4 border-t border-border bg-canvas pb-4 pt-3">
+        {!following && <button className="btn btn-secondary absolute inset-x-0 bottom-full mx-auto mb-3 w-fit bg-surface" onClick={() => toBottom(true)}>Jump to latest</button>}
+        <StatusLine status={status} alert={alert}>
+          {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="btn btn-secondary" onClick={openSettings}>Open Settings</button>}
+        </StatusLine>
+        <div className="mt-2 flex flex-wrap items-center gap-2 empty:hidden">
+          {(evaluating || streaming) && <button className="btn btn-secondary" onClick={stop}>Stop</button>}
+          {(last?.status === 'failed' || (pendingAnswer && !evaluating)) && <button className="btn btn-secondary" onClick={pendingAnswer ? retryAnswer : again}>Retry</button>}
+          {['done', 'stopped'].includes(last?.status) && <button className="btn btn-secondary" onClick={again}>Regenerate</button>}
+          {canContinue && <button className="btn btn-primary" onClick={proceed}>Continue</button>}
+        </div>
+        <div className="mt-2">
+          <Composer
+            draft={draft} onDraft={setDraft} onSend={send}
+            readOnly={!canAnswer} disabled={canContinue || lessonDone(lesson)} canSend={canAnswer && !offline}
+          />
         </div>
       </div>
     </section>

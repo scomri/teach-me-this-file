@@ -85,7 +85,7 @@ async function mount(steps) {
   const render = (nextSettings = settings, saveCount = 0) => act(async () => root.render(React.createElement(Host, { settings: nextSettings, saveCount, openSettings() { openedSettings++; } })));
   await render();
   const button = (label) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
-  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const tick = () => new Promise((r) => setImmediate(r)); // not setTimeout, which a test may mock
   const click = (label) => act(async () => { button(label).dispatchEvent(new window.Event('click', { bubbles: true })); await tick(); });
   const feed = (fn) => act(async () => { fn(); await tick(); });
   const composer = () => container.querySelector('#answer');
@@ -96,7 +96,10 @@ async function mount(steps) {
     props.onChange({ target: { value } });
     await tick();
   });
-  return { container, teach, evaluate, cancelled, button, click, feed, type, composer, render, openedSettings: () => openedSettings, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
+  // Waiting keeps the composer focusable (read-only); after a reveal and on the done screen it is disabled.
+  const locked = () => composer().hasAttribute('readOnly') || composer().hasAttribute('disabled');
+  const key = (init) => act(async () => { composer()[Object.keys(composer()).find((k) => k.startsWith('__reactProps$'))].onKeyDown({ preventDefault() {}, nativeEvent: {}, ...init }); await tick(); });
+  return { container, teach, evaluate, cancelled, button, click, feed, type, key, locked, composer, render, openedSettings: () => openedSettings, text: () => container.textContent, unmount: () => act(() => root.unmount()) };
 }
 
 test('a restored in-progress lesson can check its old questions and regenerate a usable fallback', async () => {
@@ -247,9 +250,9 @@ const right = { intent: 'answer', keyPointsMet: [0] };
 test('the composer waits for the opening reply, and Send needs text', async () => {
   const ui = await mount();
   await ui.click('Start');
-  assert.equal(ui.composer().disabled, true);
+  assert.equal(ui.locked(), true);
   await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.text('Hi.'); s.done(); });
-  assert.equal(ui.composer().disabled, false);
+  assert.equal(ui.locked(), false);
   assert.equal(ui.button('Send').disabled, true);
   await ui.type('   ');
   assert.equal(ui.button('Send').disabled, true);
@@ -268,9 +271,9 @@ test('an answer sends evaluate, shows thinking, then streams the teach reply; a 
   assert.deepEqual(call.body.step, { objective: 'o1', checkQuestion: 'Why light?', expected: ['the secret key point'] });
   assert.deepEqual(call.body.chunks.map((c) => c.id), ['c1', 'c2']);
   assert.match(ui.text(), /it is sugar/); // the student's message is in the transcript
-  assert.match(ui.text(), /Thinking/);
+  assert.match(ui.text(), /Reading your answer…/);
   assert.equal(ui.composer().value, '');
-  assert.equal(ui.composer().disabled, true);
+  assert.equal(ui.locked(), true);
   assert.equal(ui.teach.length, 1, 'no teach request before the evaluation arrives');
   assert.match(ui.text(), /Step 1 of 2/);
   await ui.feed(() => call.answer(right));
@@ -285,7 +288,7 @@ test('an answer sends evaluate, shows thinking, then streams the teach reply; a 
   await reply(ui, 1, 'Right! Now sugar.');
   assert.match(ui.text(), /Right! Now sugar\./);
   assert.match(ui.text(), /Source: page 3/); // no chunk ids from the evaluator: the next step's own
-  assert.equal(ui.composer().disabled, false);
+  assert.equal(ui.locked(), false);
   await ui.unmount();
 });
 
@@ -358,7 +361,7 @@ test('two wrong answers: a nudge, then a reveal with all points; Continue opens 
   assert.match(ui.text(), /Step 2 of 2/);
   assert.equal(ui.button('Continue'), undefined);
   await reply(ui, 3, 'Sugar now.');
-  assert.equal(ui.composer().disabled, false);
+  assert.equal(ui.locked(), false);
   await ui.unmount();
 });
 
@@ -381,7 +384,7 @@ test('a correct answer on the last step is followed by a recap of mastered and r
   await reply(ui, 4, 'Well done.');
   assert.match(ui.text(), /Well done\./);
   assert.match(ui.text(), /Step 2 of 2/);
-  assert.equal(ui.composer().disabled, true);
+  assert.equal(ui.locked(), true);
   await ui.unmount();
 });
 
@@ -429,7 +432,7 @@ test('an evaluation that fails keeps the answer, shows the error and Retry evalu
   assert.match(ui.text(), /rate-limiting/);
   assert.match(ui.text(), /sugar/);
   assert.equal(ui.teach.length, 1);
-  assert.equal(ui.composer().disabled, true); // the answer waits for its evaluation
+  assert.equal(ui.locked(), true); // the answer waits for its evaluation
   await ui.click('Retry');
   assert.equal(ui.evaluate.length, 2);
   assert.equal(ui.evaluate[1].body.message, 'sugar');
@@ -509,7 +512,7 @@ test('asking for the answer starts a scaffold and leaves the step active', async
   assert.equal(ui.teach[1].body.transition, 'scaffold');
   assert.match(ui.text(), /Step 1 of 2/);
   await reply(ui, 1, 'Try this.');
-  assert.equal(ui.composer().disabled, false);
+  assert.equal(ui.locked(), false);
   await ui.unmount();
 });
 
@@ -577,10 +580,10 @@ test('the composer stays off after a failed reply, until Retry finishes it', asy
   const ui = await mount();
   await ui.click('Start');
   await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.fail('unreachable'); });
-  assert.equal(ui.composer().disabled, true);
+  assert.equal(ui.locked(), true);
   await ui.click('Retry');
   await reply(ui, 1, 'Plants eat light.');
-  assert.equal(ui.composer().disabled, false);
+  assert.equal(ui.locked(), false);
   await ui.unmount();
 });
 
@@ -731,5 +734,126 @@ test('a stopped reply is announced; a failed one is not', async () => {
   await ui.click('Regenerate');
   await ui.feed(() => { ui.teach[1].stream.start('id-2'); ui.teach[1].stream.text('Half'); ui.teach[1].stream.fail('rate_limited'); });
   assert.equal(region(ui).textContent.trim(), '');
+  await ui.unmount();
+});
+
+// Waiting states. The status line names the stage; a protected reply is buffered by the server, so it appears whole.
+const status = (ui) => ui.container.querySelector('[role="status"]').textContent;
+const typing = (ui) => ui.container.querySelector('.typing-indicator');
+
+test('Send reads the answer, then writes and checks the reply with a typing indicator, then shows it whole', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  assert.equal(status(ui), 'Reading your answer…');
+  assert.ok(ui.button('Stop'), 'Stop is there while the answer is read');
+  await ui.feed(() => call.answer(wrong));
+  assert.equal(status(ui), 'Writing and checking the reply…');
+  const pending = ui.container.querySelectorAll('li')[2];
+  assert.equal(pending.getAttribute('aria-busy'), 'true');
+  assert.ok(typing(ui));
+  assert.ok(ui.button('Stop'));
+  await ui.feed(() => { const s = ui.teach[1].stream; s.start('id-1'); s.text('Think about light, the whole reply.'); s.done(); });
+  assert.equal(status(ui), '');
+  assert.equal(typing(ui), null);
+  assert.match(ui.text(), /Think about light, the whole reply\./);
+  await ui.unmount();
+});
+
+test('a reveal is not checked, so its wait says only that it is writing', async () => {
+  const ui = await opened();
+  const first = await send(ui, 'x');
+  await ui.feed(() => first.answer(wrong));
+  await reply(ui, 1);
+  const second = await send(ui, 'y');
+  await ui.feed(() => second.answer(wrong));
+  assert.equal(ui.teach[2].body.transition, 'reveal');
+  assert.equal(status(ui), 'Writing the reply…');
+  await ui.feed(() => { ui.teach[2].stream.start('id-2'); ui.teach[2].stream.text('The answer'); });
+  assert.equal(status(ui), '', 'a reveal streams, so the text shows as it arrives');
+  assert.match(ui.text(), /The answer/);
+  await ui.unmount();
+});
+
+test('Stop while the answer is read puts it back in the composer, which stays usable', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.click('Stop');
+  assert.equal(ui.composer().value, 'sugar');
+  assert.equal(ui.locked(), false);
+  assert.equal(ui.container.querySelectorAll('li').length, 1, 'the withdrawn answer leaves the transcript');
+  assert.equal(status(ui), '');
+  await ui.feed(() => call.answer(right)); // a late answer is ignored
+  assert.equal(ui.teach.length, 1);
+  assert.equal(ui.button('Send').disabled, false);
+  await ui.unmount();
+});
+
+test('Stop while the reply is written and checked leaves the composer usable', async () => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.answer(wrong));
+  await ui.feed(() => ui.teach[1].stream.start('id-1'));
+  await ui.click('Stop');
+  assert.deepEqual(ui.cancelled, ['id-1']);
+  assert.equal(status(ui), '');
+  assert.equal(ui.locked(), false);
+  await ui.type('light');
+  assert.equal(ui.button('Send').disabled, false);
+  await ui.unmount();
+});
+
+test('a first request with no answer after 3 seconds adds "Waking the server…"; a later slow one does not', async (t) => {
+  const ui = await mount();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await ui.click('Start');
+  await ui.feed(() => t.mock.timers.tick(2999));
+  assert.doesNotMatch(status(ui), /Waking/);
+  await ui.feed(() => t.mock.timers.tick(1));
+  assert.equal(status(ui), 'Writing and checking the reply… Waking the server…');
+  await ui.feed(() => ui.teach[0].stream.start('id-0'));
+  assert.equal(status(ui), 'Writing and checking the reply…');
+  await ui.feed(() => { ui.teach[0].stream.text('Hi.'); ui.teach[0].stream.done(); });
+  await send(ui, 'sugar');
+  await ui.feed(() => t.mock.timers.tick(5000));
+  assert.equal(status(ui), 'Reading your answer…');
+  t.mock.timers.reset();
+  await ui.unmount();
+});
+
+test('offline disables Send and says so; back online re-enables it', async () => {
+  const ui = await opened();
+  await ui.type('light');
+  await ui.feed(() => window.dispatchEvent(new window.Event('offline')));
+  assert.equal(ui.button('Send').disabled, true);
+  assert.match(status(ui), /You're offline/);
+  await ui.feed(() => window.dispatchEvent(new window.Event('online')));
+  assert.equal(ui.button('Send').disabled, false);
+  assert.doesNotMatch(status(ui), /offline/);
+  await ui.unmount();
+});
+
+test('Enter sends, Shift+Enter does not, and the composer keeps focus after Send', async () => {
+  const ui = await opened();
+  await ui.type('light');
+  let focused = 0;
+  ui.composer().focus = () => { focused++; }; // the fake DOM keeps no focus; count the call instead
+  await ui.key({ key: 'Enter', shiftKey: true });
+  assert.equal(ui.evaluate.length, 0);
+  await ui.key({ key: 'Enter' });
+  assert.equal(ui.evaluate.length, 1);
+  assert.equal(ui.evaluate[0].body.message, 'light');
+  assert.equal(focused, 1, 'focus returns to the composer after Send');
+  await ui.unmount();
+});
+
+test('Retry and Regenerate are secondary; Continue is primary after a reveal', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.fail('unreachable'); });
+  assert.match(ui.button('Retry').className, /btn-secondary/);
+  assert.equal(ui.container.querySelector('[role="alert"]').textContent.trim(), "Couldn't reach the model provider. Try again.");
+  await ui.click('Retry');
+  await reply(ui, 1);
+  assert.match(ui.button('Regenerate').className, /btn-secondary/);
   await ui.unmount();
 });

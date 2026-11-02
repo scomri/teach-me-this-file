@@ -74,7 +74,12 @@
 }
 
 @layer components {
+  /* 44px tall, so every button is a comfortable touch target. */
   .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
     border-radius: 0.375rem;
     border: 1px solid transparent;
     padding-block: 0.25rem;
@@ -135,6 +140,13 @@
     text-transform: uppercase;
   }
 }
+
+/* The pending tutor message (Message.jsx): three dots that pulse in turn. Still under reduced motion. */
+.typing-indicator { display: inline-flex; gap: 0.25rem; padding-block: 0.5rem; }
+.typing-indicator > span { width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: var(--color-muted); animation: typing 1.2s infinite ease-in-out; }
+.typing-indicator > span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator > span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes typing { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
 
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { transition: none !important; animation: none !important; }

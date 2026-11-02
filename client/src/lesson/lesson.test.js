@@ -399,3 +399,11 @@ test('the chunk ids the evaluator named are kept on the student message for the 
   const s = answer(opened(), 'a', { intent: 'answer', keyPointsMet: [0], relevantChunkIds: ['c1'] });
   assert.deepEqual(s.messages.at(-1).relevantChunkIds, ['c1']);
 });
+
+test('answerWithdrawn removes an answer still awaiting its evaluation, and nothing else', () => {
+  const before = opened();
+  const pending = reduce(before, { type: 'answerSent', text: 'light' });
+  assert.deepEqual(reduce(pending, { type: 'answerWithdrawn' }), before);
+  const evaluated = answer(before, 'light', ans());
+  assert.equal(reduce(evaluated, { type: 'answerWithdrawn' }), evaluated);
+});
