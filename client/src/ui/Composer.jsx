@@ -19,7 +19,7 @@ export default function Composer({ draft, onDraft, onSend, readOnly, disabled, c
       <textarea
         ref={box} id="answer" className="field mt-1 block w-full p-2" rows={2}
         value={draft} onChange={(e) => onDraft(e.target.value)} readOnly={readOnly} disabled={disabled} aria-describedby="answer-count"
-        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) { e.preventDefault(); send(); } }}
       />
       <div className="mt-1 flex items-center justify-between gap-2">
         <p id="answer-count" className={`text-sm ${over ? 'text-danger' : 'text-muted'}`}>

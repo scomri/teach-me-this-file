@@ -141,7 +141,7 @@
   }
 }
 
-/* The pending tutor message (Message.jsx): three dots that pulse in turn. Still under reduced motion. */
+/* The pending tutor message (Message.jsx): three dots that pulse in turn; under reduced motion they stop pulsing and stay visible. */
 .typing-indicator { display: inline-flex; gap: 0.25rem; padding-block: 0.5rem; }
 .typing-indicator > span { width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: var(--color-muted); animation: typing 1.2s infinite ease-in-out; }
 .typing-indicator > span:nth-child(2) { animation-delay: 0.2s; }

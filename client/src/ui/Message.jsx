@@ -39,12 +39,12 @@ export default function Message({ message: m, source }) {
   const pages = sourcePages(m, source);
   const writing = m.status === 'streaming';
   return (
-    <li className="min-w-0 border-s-2 border-accent ps-4" aria-busy={writing}>
+    <li dir="auto" className="min-w-0 border-s-2 border-accent ps-4" aria-busy={writing}>
       <span className="block text-xs font-medium text-muted">Tutor</span>
       {m.text ? <div className="min-w-0 space-y-2"><Reply>{m.text}</Reply></div> : writing && <span className="typing-indicator" aria-hidden="true"><span /><span /><span /></span>}
       {m.status === 'stopped' && <p className="mt-1 text-xs text-muted">Stopped.</p>}
       {m.chunkIds?.length > 0 && <details className="mt-2 text-sm">
-        <summary className="flex min-h-11 cursor-pointer items-center text-muted">Source{pages ? `: ${pages}` : ' passages'}</summary>
+        <summary className="cursor-pointer py-2.5 leading-6 text-muted">Source{pages ? `: ${pages}` : ' passages'}</summary>
         <div className="space-y-2 border-s border-border ps-3">
           {source.chunks.filter((c) => m.chunkIds.includes(c.id)).map((c) => <p key={c.id} dir="auto" className="whitespace-pre-wrap">{c.text}</p>)}
         </div>

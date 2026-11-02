@@ -846,7 +846,33 @@ test('Enter sends, Shift+Enter does not, and the composer keeps focus after Send
   await ui.unmount();
 });
 
-test('Retry and Regenerate are secondary; Continue is primary after a reveal', async () => {
+test('Continue is the primary button after a reveal, and the composer is off while it shows', async () => {
+  const ui = await opened();
+  const first = await send(ui, 'x');
+  await ui.feed(() => first.answer(wrong));
+  await reply(ui, 1);
+  const second = await send(ui, 'y');
+  await ui.feed(() => second.answer(wrong));
+  await reply(ui, 2, 'The answer is X.');
+  assert.match(ui.button('Continue').className, /btn-primary/);
+  assert.equal(ui.composer().hasAttribute('disabled'), true);
+  assert.match(ui.button('Regenerate').className, /btn-secondary/);
+  await ui.unmount();
+});
+
+test('a server error counts as an answer, so the next wait does not say the server is waking', async (t) => {
+  const ui = await opened();
+  const call = await send(ui, 'sugar');
+  await ui.feed(() => call.fail('rate_limited', 429));
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await ui.click('Retry');
+  await ui.feed(() => t.mock.timers.tick(5000));
+  assert.equal(status(ui), 'Reading your answer…');
+  t.mock.timers.reset();
+  await ui.unmount();
+});
+
+test('Retry and Regenerate are secondary buttons', async () => {
   const ui = await mount();
   await ui.click('Start');
   await ui.feed(() => { const s = ui.teach[0].stream; s.start('id-0'); s.fail('unreachable'); });

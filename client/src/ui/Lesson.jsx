@@ -75,6 +75,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       if (current.current !== run) return; // the lesson screen closed: a newer reply is not ours to settle
       if (run.stopped || ac.signal.aborted) return dispatch({ type: 'teachStopped' });
       dispatch({ type: 'teachFailed' });
+      if (error.code !== 'unreachable') heard.current = true; // the server answered, with an error
       setError({ code: error.code, from: 'teacher', key: sentKey });
       if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
@@ -142,6 +143,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       reply(transition, after.progress.current, stepChunkIds, after, rateLimitRetried, turnId);
     } catch (error) {
       if (grading.current !== ac || ac.signal.aborted) return; // the lesson screen closed
+      if (error.code !== 'unreachable') heard.current = true; // the server answered, with an error
       setError({ code: error.code, from: 'evaluator', key: sentKey });
       if (error.code === 'invalid_key' && latest.current.settings.apiKey === sentKey) openSettings();
     } finally {
@@ -195,17 +197,17 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
 
   useEffect(() => {
     if (!messages.length) open();
-    const online = () => setOffline(false);
-    const offline = () => setOffline(true);
+    const goOnline = () => setOffline(false);
+    const goOffline = () => setOffline(true);
     const scrolled = () => setFollowing(nearBottom(document.documentElement));
-    window.addEventListener('online', online);
-    window.addEventListener('offline', offline);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
     window.addEventListener('scroll', scrolled, { passive: true });
     return () => {
-      window.removeEventListener('online', online);
-      window.removeEventListener('offline', offline);
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
       window.removeEventListener('scroll', scrolled);
-      clearTimeout(wakeTimer.current);
+      stopWaiting(false);
       planCheck.current?.abort();
       grading.current?.abort();
       grading.current = null;
@@ -271,7 +273,7 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
       <MessageList messages={messages} source={source} />
       <div className="sr-only" aria-live="polite"><Reply>{announced}</Reply></div>
 
-      <div className="sticky bottom-0 mt-4 border-t border-border bg-canvas pb-4 pt-3">
+      <div className="sticky bottom-0 mt-4 border-t border-border bg-canvas pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         {!following && <button className="btn btn-secondary absolute inset-x-0 bottom-full mx-auto mb-3 w-fit bg-surface" onClick={() => toBottom(true)}>Jump to latest</button>}
         <StatusLine status={status} alert={alert}>
           {['invalid_key', 'model_not_found'].includes(errorCode) && <button className="btn btn-secondary" onClick={openSettings}>Open Settings</button>}
