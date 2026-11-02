@@ -29,7 +29,7 @@ const TEXT = [
 ];
 // Secondary buttons sit on canvas, surface and both notice tints, so their border and focus ring are checked on each.
 const NON_TEXT = ['canvas', 'surface', 'warning-tint', 'danger-tint'].flatMap((bg) => [['focus', bg], ['border-strong', bg]])
-  .concat([['accent', 'canvas'], ['accent', 'surface']]);
+  .concat([['accent', 'canvas'], ['accent', 'surface'], ['accent-strong', 'surface']]); // the last: filled progress-bar segments
 
 for (const [mode, t] of [['light', light], ['dark', dark]]) {
   test(`${mode} token pairs meet WCAG AA`, () => {

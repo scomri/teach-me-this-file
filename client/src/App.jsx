@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { initialLesson, lessonDone, reduce, normalizeSaved } from './lesson/lesson.js';
+import { initialLesson, reduce, normalizeSaved, screenOf } from './lesson/lesson.js';
 import { clearSaved, loadSaved, putSaved, shouldSave } from './lesson/persist.js';
 import ModelSettings from './ui/ModelSettings.jsx';
 import FileIngest from './ui/FileIngest.jsx';
@@ -63,7 +63,8 @@ export default function App() {
 
   // When the screen changes, focus moves to its h1. Not on the first screen after loading (the settings dialog may
   // be open), and the done screen keeps the scroll position, so the recap being read stays in view.
-  const screen = !loaded ? null : lesson.progress ? (lessonDone(lesson) ? 'done' : 'lesson') : lesson.source ? 'plan' : 'setup';
+  // The h1 belongs to whichever component draws the screen, so it is found in the DOM rather than through a ref.
+  const screen = loaded ? screenOf(lesson) : null;
   const shown = useRef(null);
   useEffect(() => {
     const prev = shown.current;
@@ -72,6 +73,7 @@ export default function App() {
     document.querySelector('main h1')?.focus({ preventScroll: screen === 'done' });
   }, [screen]);
   const inLesson = screen === 'lesson' || screen === 'done';
+  const openSettings = () => settingsRef.current.open();
 
   return (
     <>
@@ -85,12 +87,12 @@ export default function App() {
       <main className={`mx-auto max-w-xl px-4 pb-12 pt-6 ${inLesson ? 'md:grid md:max-w-4xl md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8' : ''}`}>
         {inLesson && <StepOutline lesson={lesson} />}
         <div className="min-w-0">
-          {(screen === 'setup' || screen === 'plan') && <h1 tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}
+          {(screen === 'setup' || screen === 'plan') && <h1 key={screen} tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}
           {lessonNotice && <p role="status" className="mt-2 text-sm text-warning">{lessonNotice}</p>}
           {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
           {restored && lesson.source && <p className="mt-2 text-sm text-muted">Restored your lesson on {lesson.source.name}.</p>}
-          {inLesson && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
-          {screen === 'plan' && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={() => settingsRef.current.open()} />}
+          {inLesson && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={openSettings} />}
+          {screen === 'plan' && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={openSettings} />}
         </div>
       </main>
     </>

@@ -110,7 +110,7 @@
     border-color: var(--color-accent-strong);
   }
   .step-segment-active { border: 2px solid var(--color-accent); }
-  summary::-webkit-details-marker { display: none; }
+  .step-summary::-webkit-details-marker { display: none; }
   .step-chevron { display: inline-block; transition: transform 150ms; }
   [open] > summary .step-chevron { transform: rotate(90deg); }
 

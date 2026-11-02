@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react';
+import { stepSettled } from '../lesson/lesson.js';
 
 // Each status has a word as well as a colour, so the outline reads the same without colour.
 const LABELS = { mastered: 'Mastered', revealed: 'Answer shown', active: 'Current', pending: 'Upcoming' };
 
-// The `md` breakpoint (index.css). Without matchMedia (tests) the outline takes its narrow shape.
-const WIDE = '(min-width: 45rem)';
+// The `md` breakpoint (index.css; step-outline.test.js checks they agree). Without matchMedia (tests) the
+// outline takes its narrow shape.
+export const WIDE = '(min-width: 45rem)';
 function subscribe(onChange) {
   const query = window.matchMedia?.(WIDE);
   query?.addEventListener('change', onChange);
@@ -34,16 +36,16 @@ export default function StepOutline({ lesson }) {
 
   if (wide) {
     return (
-      <aside aria-labelledby="outline-title" className="sticky top-20 min-w-0 self-start">
+      <aside aria-labelledby="outline-title" className="min-w-0">
         <h2 id="outline-title" className="mb-2 text-sm font-semibold text-muted">Steps</h2>
         {list}
       </aside>
     );
   }
-  const done = plan.steps.filter((s) => ['mastered', 'revealed'].includes(progress.steps[s.id].status)).length;
+  const done = plan.steps.filter((s) => stepSettled(progress.steps[s.id].status)).length;
   return (
     <details className="card mb-4">
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3">
+      <summary className="step-summary flex min-h-11 cursor-pointer list-none items-center gap-3 px-3">
         <span aria-hidden="true" className="step-chevron">▸</span>
         <span className="flex flex-1 gap-1" aria-hidden="true">
           {plan.steps.map((s) => <span key={s.id} data-status={progress.steps[s.id].status} className={`step-segment step-segment-${progress.steps[s.id].status}`} />)}

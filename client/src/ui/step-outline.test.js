@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { parseHTML } from 'linkedom';
@@ -13,7 +14,7 @@ const { window, document } = parseHTML('<!doctype html><html><body></body></html
 Object.assign(globalThis, { window, document, IS_REACT_ACT_ENVIRONMENT: true });
 globalThis.HTMLElement = window.HTMLElement;
 const vite = await createServer({ configFile: false, root: fileURLToPath(new URL('../..', import.meta.url)), plugins: [react()], appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' });
-const { default: StepOutline } = await vite.ssrLoadModule('/src/ui/StepOutline.jsx');
+const { default: StepOutline, WIDE } = await vite.ssrLoadModule('/src/ui/StepOutline.jsx');
 const { default: Header } = await vite.ssrLoadModule('/src/ui/Header.jsx');
 test.after(() => vite.close());
 
@@ -62,6 +63,11 @@ test('at the wide breakpoint the outline is an aside with no progress bar', asyn
   } finally {
     delete window.matchMedia;
   }
+});
+
+test('the outline switches shape at the same width as the md breakpoint in index.css', () => {
+  const css = readFileSync(new URL('../index.css', import.meta.url), 'utf8');
+  assert.equal(WIDE, `(min-width: ${css.match(/--breakpoint-md:\s*([^;]+);/)[1]})`);
 });
 
 test('the header shows the step chip during a lesson, and New lesson when there is something to discard', async () => {

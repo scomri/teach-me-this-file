@@ -130,6 +130,11 @@ export function reduce(state, event) {
 
 // The recap has started: the last step was mastered, or Continue was pressed after its answer was shown.
 export const lessonDone = (state) => !!state.progress && state.messages.some((m) => m.transition === 'recap');
+// The screen follows from the state: setup, plan review, the lesson, or the lesson once done.
+export const screenOf = (state) => (state.progress ? (lessonDone(state) ? 'done' : 'lesson') : state.source ? 'plan' : 'setup');
+export const currentStepIndex = (state) => state.plan.steps.findIndex((s) => s.id === state.progress.current);
+// A step is behind the student once mastered or once its answer was shown.
+export const stepSettled = (status) => status === 'mastered' || status === 'revealed';
 
 // Persistence helpers (pure). The record is the lesson state and nothing else: never the API key or settings.
 export const savedRecord = (s) => ({ version: s.version, source: s.source, teacher: s.teacher, plan: s.plan, progress: s.progress, messages: s.messages });
