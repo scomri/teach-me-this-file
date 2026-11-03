@@ -98,12 +98,14 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
         placeholder="For example: teach the main ideas in 15 minutes, in English, for 10th graders"
       />
       <div className="mt-2 flex items-center gap-2">
-        <button className="btn btn-primary" onClick={() => runPlan()} disabled={planning || noKey}>
-          {planning ? 'Planning…' : 'Plan'}
-        </button>
+        <button className="btn btn-primary" onClick={() => runPlan()} disabled={planning || noKey}>Plan</button>
         {planning && <button className="btn btn-secondary" onClick={cancel}>Cancel</button>}
         {noKey && <span className="text-sm text-muted">Add an API key in the model settings first.</span>}
       </div>
+      {/* The plan request also checks its questions on the server, so its wait names the file; a restored plan's check names the stage. */}
+      <p role="status" className="mt-2 text-sm text-muted">
+        {status === 'planning' ? <>Planning from <span dir="auto">{doc.name}</span>…</> : status === 'checking' ? 'Checking questions…' : ''}
+      </p>
 
       <div aria-live="polite">
         {state.flagged?.length > 0 && <p role="alert">Check questions may reveal answers in steps {state.flagged.join(', ')}. Regenerate the whole plan.</p>}
