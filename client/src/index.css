@@ -95,6 +95,23 @@
     .btn-secondary:hover:enabled { background: var(--color-canvas); border-color: var(--color-text); }
   }
 
+  /* The native file picker's button, drawn like .btn-secondary so it reads as a button. */
+  .file-input::file-selector-button {
+    min-height: 2.75rem;
+    margin-inline-end: 0.75rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--color-border-strong);
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  @media (hover: hover) {
+    .file-input:hover::file-selector-button { background: var(--color-canvas); border-color: var(--color-text); }
+  }
+
   .chip { border-radius: 9999px; border-color: var(--color-accent); }
 
   .heading { font-weight: 900; letter-spacing: -0.025em; }

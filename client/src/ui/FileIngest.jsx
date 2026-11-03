@@ -52,7 +52,7 @@ export default function FileIngest({ onDoc, confirmPick }) {
       <label className="block text-sm font-medium" htmlFor="file">
         Lesson file
       </label>
-      <input ref={inputRef} id="file" className="mt-1 block w-full text-sm" type="file" accept={ACCEPTED.join(',')} onChange={pick} />
+      <input ref={inputRef} id="file" className="file-input mt-1 block w-full text-sm" type="file" accept={ACCEPTED.join(',')} onChange={pick} />
       <p className="mt-1 text-xs text-muted">
         {ACCEPTED.map((x) => x.slice(1).toUpperCase()).join(', ')} · up to {MAX_FILE_MB} MB
       </p>
