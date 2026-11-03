@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkKey, pingHealth } from './connection.js';
+import { checkKey } from './connection.js';
 
 const settings = { preset: 'gemini', apiKey: 'k-1', evaluator: 'ev', teacher: 'te' };
 
@@ -33,11 +33,4 @@ test('checkKey maps an aborted request to unreachable', async () => {
   const pending = checkKey({ settings, signal: controller.signal }, fetchImpl);
   controller.abort();
   assert.deepEqual(await pending, { code: 'unreachable' });
-});
-
-test('pingHealth resolves true only for { ok: true }', async () => {
-  assert.equal(await pingHealth({}, async () => Response.json({ ok: true })), true);
-  assert.equal(await pingHealth({}, async () => Response.json({ ok: false })), false);
-  assert.equal(await pingHealth({}, async () => { throw new TypeError('offline'); }), false);
-  assert.equal(await pingHealth({}, async () => new Response('x')), false);
 });

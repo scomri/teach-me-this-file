@@ -15,13 +15,3 @@ export async function checkKey({ settings, signal }, fetchImpl = fetch) {
     return { code: 'unreachable' };
   }
 }
-
-// Pings the server. Resolves true when it answers { ok: true }, false otherwise; never throws.
-export async function pingHealth({ signal } = {}, fetchImpl = fetch) {
-  try {
-    const response = await fetchImpl('/api/health', { signal });
-    return (await response.json()).ok === true;
-  } catch {
-    return false;
-  }
-}
