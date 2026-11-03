@@ -32,6 +32,7 @@ const replaceLast = (state, patch) => ({ ...state, messages: [...state.messages.
 const pendingAnswer = (state) => state.messages.at(-1)?.role === 'student' && state.messages.at(-1).intent === null;
 const stepAfter = (plan, id) => plan.steps[plan.steps.findIndex((s) => s.id === id) + 1];
 const ATTEMPTS = 2; // failed attempts on a step before the tutor reveals the answer
+const ASKS = 2; // requests for the answer on a step before the tutor reveals it (the earlier ones get a scaffold)
 const streamingReply = (stepId, transition, chunkIds) => ({ role: 'tutor', stepId, text: '', transition, chunkIds, status: 'streaming' });
 
 // Grades an evaluation against the current step: the points it adds (a union with earlier answers), the
@@ -44,7 +45,7 @@ function grade(state, evaluation) {
   if (!evaluation) return { intent: 'evaluation_failed', transition: 'nudge', ...before };
   if (evaluation.intent === 'asks_for_answer') {
     const asks = before.asks + 1;
-    return { ...before, intent: evaluation.intent, asks, transition: asks >= 2 ? 'reveal' : 'scaffold', status: asks >= 2 ? 'revealed' : 'active' };
+    return { ...before, intent: evaluation.intent, asks, transition: asks >= ASKS ? 'reveal' : 'scaffold', status: asks >= ASKS ? 'revealed' : 'active' };
   }
   if (evaluation.intent !== 'answer') return { ...before, intent: evaluation.intent, transition: evaluation.intent === 'question' ? 'answer_question' : 'redirect' };
   const met = (evaluation.keyPointsMet ?? []).filter((i) => Number.isInteger(i) && i >= 0 && i < step.expected.length);
