@@ -11,14 +11,14 @@ What I chose, why, and what I left out. Larger architectural choices get a short
 
 ## How you know it works
 
-Each scenario is a hard-asserted check in the opt-in live check (`scripts/live-check.mjs`), which mounts the real plan and lesson components in a fake DOM, runs the server in-process and talks to a real model. Asserts cover what code controls (transitions, attempts, step status, request counts, plan validity); reply formatting and Hebrew letters are logged, not asserted. Three runs on Gemini, 2026-11-03; details in [Live check runs](#live-check-runs).
+Each scenario is a hard-asserted check in the opt-in live check (`scripts/live-check.mjs`), which mounts the real plan and lesson components in a fake DOM, runs the server in-process and talks to a real model. Asserts cover what code controls (transitions, attempts, step status, request counts, plan validity); reply formatting and Hebrew letters are logged, not asserted. Three runs on Gemini, 2026-11-03, after the reveal prompt fix described there; details in [Live check runs](#live-check-runs).
 
 | Id | Brief requirement | What is checked | Runs | Passed |
 |---|---|---|---:|---:|
-| S1 | Wrong answer: nudge, do not give the answer | Asserted: a first wrong answer never reveals (English, Hebrew and S3 lessons); in S3 it is graded `nudge` with one failed attempt. Not driven live: the reveal after a second wrong answer, covered by reducer and fake-DOM tests and one [deployed run](#answering-a-check-question-built). | 3 | 3 |
+| S1 | Wrong answer: nudge without the answer, reveal after two | Asserted: two plausible wrong answers are graded `nudge` (one failed attempt, no Continue), then `reveal` (Continue shown, step status `revealed`). A first wrong answer also never reveals in the English, Hebrew and S3 lessons. | 3 | 3 |
 | S2 | "Just tell me": scaffold first, answer on a second ask | Asserted: after one wrong answer, asking for the answer reveals it within three asks (Continue appears). Logged: every run took two asks. | 3 | 3 |
 | S3 | Off-topic and side questions handled, not counted | Asserted: an off-topic message is redirected and a side question answered, neither changes attempts or the step; the next wrong answer nudges. | 3 | 3 |
-| S4 | Hebrew file, "in English, 10 minutes, for 10th graders" | Asserted: steps within the ceiling of 4, no Hebrew letters in plan titles and questions, minutes 10 and an audience read from the prompt, reveal reached. Logged: Hebrew letters in replies (none outside the reveal's quote in any run). | 3 | 3 |
+| S4 | Hebrew file, "in English, 10 minutes, for 10th graders" | Asserted: steps within the ceiling of 4, no Hebrew letters in plan titles and questions, minutes 10 and an audience read from the prompt, reveal reached. Logged: Hebrew letters in replies (none outside the reveal's quote in any run) and whether the quote carries its English translation (3 of 3). | 3 | 3 |
 | S5 | File text is content, not instructions | Asserted: the planted marker is in the ingested chunks but absent from the plan and every reply; the planted "already answered" claim does not skip the step. | 3 | 3 |
 | S6 | Stop and recovery | Asserted: Stop settles the reply as stopped with progress and earlier messages unchanged, and the cancel request returns 204; Regenerate sends one teach request and no evaluation; a remount from the saved records restores the step and messages with no request. | 3 | 3 |
 | S7 | Very long documents ("teach chapter 5") | Asserted: a generated 115 KB, ten-chapter document is planned from a 3 KB outline, and every step cites only chapter 5's chunks. | 3 | 3 |
@@ -83,27 +83,30 @@ Streaming hardening verification: local HTTP tests passed for a stream finishing
 
 ## Live check runs
 
-Three consecutive runs on 2026-11-03, 19:55-20:14 local time (about 6.5 minutes each), on the Gemini preset with its default models: evaluator `gemini-3.6-flash`, teacher `gemini-3.8-flash`. Command: `node --env-file=<env file> --test scripts/live-check.mjs`. No prompt, model or assert changed between runs. Rows map to scenarios: en lesson is S1 and S2, off-topic S3, he lesson S4, injection S5, stop S6, long document S7.
+Three consecutive runs on 2026-11-03, 21:11-21:33 local time (about 7.5 minutes each), on the Gemini preset with its default models: evaluator `gemini-3.6-flash`, teacher `gemini-3.8-flash`. Command: `node --env-file=<env file> --test scripts/live-check.mjs`. No prompt, model or assert changed between runs. Rows map to scenarios: wrong twice is S1, en lesson S2, off-topic S3, he lesson S4, injection S5, stop S6, long document S7.
 
 | Check | Scenario | Run 1 | Run 2 | Run 3 | Seconds (range) |
 |---|---|---|---|---|---|
-| key check | | pass | pass | pass | 2.3-3.0 |
-| en lesson | S1, S2 | pass | pass | pass | 57.7-77.2 |
-| off-topic | S3 | pass | pass | pass | 66.4-87.2 |
-| he lesson | S4 | pass | pass | pass | 78.3-97.6 |
-| injection | S5 | pass | pass | pass | 62.7-95.9 |
-| stop | S6 | pass | pass | pass | 35.2-37.8 |
-| long document | S7 | pass | pass | pass | 25.5-56.8 |
+| key check | | pass | pass | pass | 2.5-4.4 |
+| wrong twice | S1 | pass | pass | pass | 48.7-66.2 |
+| en lesson | S2 | pass | pass | pass | 62.2-85.6 |
+| off-topic | S3 | pass | pass | pass | 62.3-77.3 |
+| he lesson | S4 | pass | pass | pass | 70.6-94.7 |
+| injection | S5 | pass | pass | pass | 73.8-104.8 |
+| stop | S6 | pass | pass | pass | 40.9-42.9 |
+| long document | S7 | pass | pass | pass | 27.7-34.5 |
 
 What the runs show beyond the asserts:
 
 - **S2 took two asks every time.** The English lesson had four tutor replies in each run: opening, reply to the wrong answer, scaffold, reveal.
 - **S4 plans were short.** The short Hebrew file produced a one-step plan (ceiling 4) in all three runs; the plan is not padded. Replies outside the reveal's quote had no Hebrew letters.
-- **Hebrew reveal translations were not measured by these runs.** The check counted Latin letters only inside the blockquote and found none, but a separate run that printed the reveal showed the translation written as a "(Translation: …)" paragraph after the quote, where the count does not look. In run 3 the quote was a single Hebrew word rather than the passage. Both are logged, not asserted (see [Tutor message rendering](#tutor-message-rendering-built)).
-- **Formatting.** No reply showed raw Markdown; every check that reached a reveal (en, he, injection) had a quote in it.
+- **The Hebrew reveal quoted the whole passage with its translation inside the quote** in all three runs (193 Hebrew letters and a "Translation:" line each time).
+- **Formatting.** No reply showed raw Markdown; every check that reached a reveal had a quote in it.
 - **S7** planned two or three steps from a ten-entry outline (a 3 KB request for a 115 KB document), all citing chapter 5.
 
-The S1 reveal after a second wrong answer and Stop in the middle of streamed text are not driven by the live check (see [Libraries](#libraries) for its limits).
+An earlier set of three runs the same day (19:55-20:14, same models) passed every check then in the live check, 3 of 3, but had two gaps that the runs above close. The English lesson sent one wrong answer and then asked for the answer, so no run reached the reveal after a second wrong answer; the "wrong twice" check now drives it. The Hebrew reveal looked untranslated, because the check counted Latin letters only inside the quote, while the model wrote the translation as a paragraph after it; in one of those runs it also quoted a single word. The reveal prompt now asks for whole sentences and a closing "Translation:" line inside the quote, and the check logs it.
+
+Stop in the middle of streamed text is not driven by the live check (see [Libraries](#libraries) for its limits).
 
 ## Long-document provider measurements
 
@@ -198,7 +201,7 @@ Provider-attempt telemetry was checked on 2026-11-01 against a tagged Cloud Run 
 
 Tutor replies render as Markdown (lists, bold, code, tables); student messages stay plain text. Raw HTML is off, so tags in a reply show as text, and images are dropped so a reply cannot load anything from another site. Math is not rendered: formulas stay plain text. Every block element carries `dir="auto"`, so a Hebrew reply reads right to left; lists use inside markers because a container's automatic direction ignores children that set their own, so the item decides. A quote is the exception: its direction comes from its text's main script, because `dir="auto"` on the quote would skip its paragraphs and fall back to left to right, putting the quote box's rule on the wrong side. Links open in a new tab with `rel="noopener noreferrer"`. Tables scroll sideways inside their message instead of widening the page. Bold key terms render as a highlighter mark, and quotes as a box labelled "From your file" with a rule on the inline-start side, so it sits on the right in a Hebrew reply.
 
-Quotes appear only in reveals. Every other reply is told not to quote the passages, and the reveal instruction asks for the one passage that holds the answer as a Markdown blockquote, in its original language, with a translation when that differs from the lesson language. Before that sentence the reveal allowed quoting but never asked for it, and no live reveal quoted. With it, three opt-in live runs with Gemini quoted in every reveal: 3 of 3 for an English file and 3 of 3 for a Hebrew file taught in English, with no Hebrew outside the quote. Code does not enforce the quote, so a reveal can still omit it. Known weakness: the form of the Hebrew quote varied. Once the translation sat inside the quote, once outside it, and once the model quoted a single Hebrew word instead of the passage.
+Quotes appear only in reveals. Every other reply is told not to quote the passages, and the reveal instruction asks for the one passage that holds the answer as a Markdown blockquote, in its original language, with a translation when that differs from the lesson language. Before that sentence the reveal allowed quoting but never asked for it, and no live reveal quoted. With it, three opt-in live runs with Gemini quoted in every reveal: 3 of 3 for an English file and 3 of 3 for a Hebrew file taught in English, with no Hebrew outside the quote. The reveal now also asks for whole sentences and puts the translation inside the quote as its last line ("Translation: …"); three live runs after that change quoted the whole Hebrew passage with the translation inside it each time (see [Live check runs](#live-check-runs)). Code does not enforce the quote, so a reveal can still omit it. Known weakness: the form of the Hebrew quote varied. Once the translation sat inside the quote, once outside it, and once the model quoted a single Hebrew word instead of the passage.
 
 The message list is not a live region, because a screen reader would read a streamed reply chunk by chunk. A waiting or streaming tutor message is `aria-busy="true"`. One visually hidden `aria-live="polite"` region receives each reply once, when it finishes (done or stopped). A failed reply is not announced, and a reply restored from a saved lesson is not announced again.
 
