@@ -4,7 +4,7 @@ Upload a document, say what the lesson should be, and a tutor teaches it step by
 
 [![CI](https://github.com/scomri/teach-me-this-file/actions/workflows/ci.yml/badge.svg)](https://github.com/scomri/teach-me-this-file/actions/workflows/ci.yml)
 
-**Try it live: [teach-me-this-file-630387171976.europe-west1.run.app](https://teach-me-this-file-630387171976.europe-west1.run.app)** (bring your own API key; a free Gemini key works)
+**Try it live: [teach-me-this-file-4pdc4dfsqa-ew.a.run.app](https://teach-me-this-file-4pdc4dfsqa-ew.a.run.app)** (bring your own API key; a free Gemini key works)
 
 <p>
   <img src="docs/lesson-desktop.webp" alt="A lesson on photosynthesis at step 2 of 4: the step outline on the left, the tutor's nudge after a partial answer, and the answer box" width="68%">
@@ -22,7 +22,7 @@ Upload a document, say what the lesson should be, and a tutor teaches it step by
 
 ## How to use
 
-1. **Add a key.** Open the [live app](https://teach-me-this-file-630387171976.europe-west1.run.app). Settings opens by itself when no key is set. Pick a preset (see [API key and providers](#api-key-and-providers)), paste your key and choose **Save and check connection**. The header pill should read "ready".
+1. **Add a key.** Open the [live app](https://teach-me-this-file-4pdc4dfsqa-ew.a.run.app). Settings opens by itself when no key is set. Pick a preset (see [API key and providers](#api-key-and-providers)), paste your key and choose **Save and check connection**. The header pill should read "ready".
 2. **Pick a file.** Choose a PDF, DOCX, PPTX, TXT or MD file (see [Limits](#limits)).
 3. **Write a prompt (optional).** For example: "Teach the main ideas in 10 minutes, in English, for 10th graders." Leave it empty to plan the whole file with the defaults. Choose **Plan**.
 4. **Review the plan.** Read the steps, their check questions and the pages they draw on. Notes under the plan say if the file covers only part of the request, or if you asked for something the app does not do. **Regenerate** asks for a new plan; **Start** opens step 1.
