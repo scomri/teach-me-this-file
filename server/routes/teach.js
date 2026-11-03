@@ -150,7 +150,7 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       if (!any || (protectedReply && !complete)) return stream.end('unreachable');
       if (protectedReply) {
         let flagged = null;
-        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.model, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints, source: request.chunks, ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }) }] }); } catch { /* fail closed */ }
+        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.model, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints, source: request.chunks, ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }), ...(['opening', 'advance'].includes(request.transition) && { checkQuestion: request.step.checkQuestion }) }] }); } catch { /* fail closed */ }
         if (stream.signal.aborted) return;
         stream.write({ text: flagged?.length === 0 ? draft : fallback(request) });
       }
