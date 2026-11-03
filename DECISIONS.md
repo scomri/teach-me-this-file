@@ -99,7 +99,7 @@ What the runs show beyond the asserts:
 
 - **S2 took two asks every time.** The English lesson had four tutor replies in each run: opening, reply to the wrong answer, scaffold, reveal.
 - **S4 plans were short.** The short Hebrew file produced a one-step plan (ceiling 4) in all three runs; the plan is not padded. Replies outside the reveal's quote had no Hebrew letters.
-- **The Hebrew reveal quote had no translation.** None of the three quotes contained Latin letters, although the reveal prompt asks for a translation; in run 3 the quote was a single Hebrew word rather than the passage. This is logged, not asserted (see [Tutor message rendering](#tutor-message-rendering-built)).
+- **Hebrew reveal translations were not measured by these runs.** The check counted Latin letters only inside the blockquote and found none, but a separate run that printed the reveal showed the translation written as a "(Translation: …)" paragraph after the quote, where the count does not look. In run 3 the quote was a single Hebrew word rather than the passage. Both are logged, not asserted (see [Tutor message rendering](#tutor-message-rendering-built)).
 - **Formatting.** No reply showed raw Markdown; every check that reached a reveal (en, he, injection) had a quote in it.
 - **S7** planned two or three steps from a ten-entry outline (a 3 KB request for a 115 KB document), all citing chapter 5.
 
