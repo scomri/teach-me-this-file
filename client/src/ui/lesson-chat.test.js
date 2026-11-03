@@ -186,6 +186,17 @@ test('Stop before the stream is named cancels it once the id arrives', async () 
   await ui.unmount();
 });
 
+test('closing the tab cancels the reply in flight; hiding it does not', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => ui.teach[0].stream.start('id-1'));
+  await ui.feed(() => document.dispatchEvent(new window.Event('visibilitychange')));
+  assert.deepEqual(ui.cancelled, []);
+  await ui.feed(() => window.dispatchEvent(new window.Event('pagehide')));
+  assert.deepEqual(ui.cancelled, ['id-1']);
+  await ui.unmount();
+});
+
 test('Regenerate sends a teach request with the same transition and replaces the reply', async () => {
   const ui = await mount();
   await ui.click('Start');

@@ -200,13 +200,18 @@ export default function Lesson({ lesson, dispatch, settings, saveCount, openSett
     const goOnline = () => setOffline(false);
     const goOffline = () => setOffline(true);
     const scrolled = () => setFollowing(nearBottom(document.documentElement));
+    // A closed tab cancels its reply; the cancel is a keepalive fetch, so it outlives the page. Switching tabs
+    // fires no pagehide, so a hidden tab keeps its reply.
+    const left = () => { if (current.current?.id) cancelStream(current.current.id); };
     window.addEventListener('online', goOnline);
     window.addEventListener('offline', goOffline);
     window.addEventListener('scroll', scrolled, { passive: true });
+    window.addEventListener('pagehide', left);
     return () => {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
       window.removeEventListener('scroll', scrolled);
+      window.removeEventListener('pagehide', left);
       stopWaiting(false);
       planCheck.current?.abort();
       grading.current?.abort();
