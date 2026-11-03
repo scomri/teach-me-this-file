@@ -17,9 +17,9 @@ import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createApp } from '../server/app.js';
 import { PRESETS } from '../shared/presets.js';
-import { MAX_STEPS, MIN_STEPS, stepsForMinutes } from '../shared/limits.js';
+import { MAX_DOC_CHARS, MAX_STEPS, MIN_STEPS, stepsForMinutes } from '../shared/limits.js';
 import { ingestFile } from '../client/src/ingest/ingest.js';
-import { initialLesson, reduce } from '../client/src/lesson/lesson.js';
+import { initialLesson, joinSaved, normalizeSaved, reduce, splitSaved } from '../client/src/lesson/lesson.js';
 
 const KEY_VARS = { gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', openai: 'OPENAI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 const presets = (process.env.LIVE_PRESETS ?? 'gemini').split(',').map((p) => p.trim()).filter(Boolean);
@@ -54,6 +54,33 @@ The plant takes in carbon dioxide from the air and water from the soil. Using th
 
 Oxygen is released as a by-product. This is why plants are important for the air animals breathe.`;
 
+// A document over MAX_DOC_CHARS in ten numbered chapters, built here so no large fixture is committed. Only
+// chapter 5 is about tardigrades.
+const CHAPTER_SUBJECTS = ['Roman roads', 'tidal power', 'medieval bread', 'glass making', 'tardigrades', 'copper mining', 'printing presses', 'canal locks', 'wool weaving', 'lighthouse keeping'];
+const CHAPTER_CHARS = 11_500;
+const TOPIC = 'tardigrade';
+function longDocument() {
+  const sentences = (subject) => [
+    `The study of ${subject} grew slowly over many generations of careful observers.`,
+    `Early records of ${subject} are short, and later writers filled the gaps with confident guesses.`,
+    `A good account of ${subject} separates what was measured from what was only repeated.`,
+    `Most of what we know about ${subject} comes from a handful of patient notebooks.`,
+    `Readers new to ${subject} often overlook how much depended on local conditions.`,
+    `Disagreements about ${subject} were settled by experiment far more often than by argument.`,
+    `Each generation that worked on ${subject} corrected a few errors and introduced a few new ones.`,
+  ];
+  return CHAPTER_SUBJECTS.map((subject, i) => {
+    const s = sentences(subject);
+    const paragraphs = [];
+    for (let length = 0, p = 0; length < CHAPTER_CHARS; p++) {
+      const paragraph = Array.from({ length: 6 }, (_, k) => s[(p + k * 2) % s.length]).join(' ');
+      paragraphs.push(paragraph);
+      length += paragraph.length;
+    }
+    return `# Chapter ${i + 1}: ${subject[0].toUpperCase()}${subject.slice(1)}\n\n${paragraphs.join('\n\n')}`;
+  }).join('\n\n');
+}
+
 // The fake DOM must exist before React and the components load.
 const { window, document } = parseHTML('<!doctype html><html><body></body></html>');
 Object.assign(globalThis, { window, document, IS_REACT_ACT_ENVIRONMENT: true });
@@ -63,8 +90,18 @@ const logs = [];
 const server = createApp({ log: (line) => logs.push(String(line)) }).listen(0);
 const base = `http://127.0.0.1:${server.address().port}`;
 const realFetch = globalThis.fetch;
-// The client calls relative /api URLs, as in the browser.
-globalThis.fetch = (url, init) => realFetch(new URL(url, base), init);
+// The client calls relative /api URLs, as in the browser. Every call is recorded with the status it got, so a
+// scenario can count which requests an action sent.
+const requests = [];
+globalThis.fetch = async (url, init) => {
+  const target = new URL(url, base);
+  const entry = { path: target.pathname, method: init?.method ?? 'GET', body: init?.body };
+  requests.push(entry);
+  const response = await realFetch(target, init);
+  entry.status = response.status;
+  return response;
+};
+const since = (mark, path) => requests.slice(mark).filter((r) => r.path === path);
 
 const vite = await createServer({ configFile: false, root: fileURLToPath(new URL('../client', import.meta.url)), plugins: [react()], appType: 'custom', server: { middlewareMode: true }, logLevel: 'silent' });
 const { default: PlanLesson } = await vite.ssrLoadModule('/src/ui/PlanLesson.jsx');
@@ -95,21 +132,22 @@ async function timed(row, fn) {
   }
 }
 
-function Host({ doc, prompt, probe, ...props }) {
-  const [lesson, dispatch] = React.useReducer(reduce, undefined, () =>
-    [{ type: 'fileRead', source: doc }, { type: 'promptChanged', prompt }].reduce(reduce, initialLesson()));
+// saved: a lesson loaded from storage, shown as a reload shows it, instead of a fresh one for `doc`.
+function Host({ doc, prompt, probe, saved, ...props }) {
+  const [lesson, dispatch] = React.useReducer(reduce, undefined, () => saved
+    ?? [{ type: 'fileRead', source: doc }, { type: 'promptChanged', prompt }].reduce(reduce, initialLesson()));
   probe.lesson = lesson;
   return lesson.progress
     ? React.createElement(Lesson, { ...props, lesson, dispatch })
     : React.createElement(PlanLesson, { ...props, lesson, dispatch, saveCount: 0 });
 }
 
-async function mount(doc, prompt, settings) {
+async function mount(doc, prompt, settings, saved) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
   const probe = { lesson: null }; // the reducer state behind the components, for asserting what code decided
-  await act(async () => root.render(React.createElement(Host, { doc, prompt, settings, probe, openSettings() {} })));
+  await act(async () => root.render(React.createElement(Host, { doc, prompt, settings, saved, probe, openSettings() {} })));
   const tick = () => new Promise((r) => setTimeout(r, 50));
   const button = (label) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === label);
   const alert = () => container.querySelector('[role="alert"]')?.textContent;
@@ -264,6 +302,93 @@ for (const preset of presets) {
       const first = ui.lesson().progress.steps[ui.lesson().plan.steps[0].id];
       assert.equal(first.status, 'revealed', 'the planted "already answered" claim must not skip the step');
       return observe(ui);
+    } finally { await ui.unmount(); }
+  }));
+
+  test(`${preset}: Stop keeps progress, Regenerate re-runs only the reply, a reload restores the lesson`, { skip }, () => timed({ preset, check: 'stop' }, async () => {
+    const doc = await ingestFile(new File([EN_TEXT], 'photosynthesis.md'));
+    const prompt = 'Teach this in 5 minutes.';
+    const ui = await mount(doc, prompt, settings);
+    let reloaded;
+    try {
+      await startLesson(ui);
+      await ui.type('It is because the moon is made of cheese.');
+      await ui.click('Send');
+      // The answer is graded and applied to progress before its reply starts, so Stop lands on the reply.
+      await ui.until('the reply to start', () => ui.lesson().messages.at(-1).role === 'tutor' && ui.lesson().messages.at(-1).status === 'streaming');
+      const { progress, messages } = structuredClone(ui.lesson());
+
+      let mark = requests.length;
+      await ui.click('Stop');
+      const stopped = ui.lesson().messages.at(-1);
+      assert.equal(stopped.status, 'stopped', 'Stop must settle the reply as stopped');
+      assert.match(ui.text(), /Stopped\./, 'the stopped reply is marked');
+      assert.deepEqual(ui.lesson().progress, progress, 'Stop changed the lesson progress');
+      assert.deepEqual(ui.lesson().messages.slice(0, -1), messages.slice(0, -1), 'Stop changed the earlier messages');
+      const cancel = await ui.until('the cancel request', () => requests.slice(mark).find((r) => /^\/api\/streams\/[^/]+\/cancel$/.test(r.path) && r.status));
+      assert.equal(cancel.method, 'POST');
+      assert.equal(cancel.status, 204, 'the cancel request must succeed');
+      await new Promise((r) => setTimeout(r, 1000));
+      assert.equal(ui.lesson().messages.at(-1).text, stopped.text, 'a stopped reply kept growing');
+
+      mark = requests.length;
+      await ui.click('Regenerate');
+      await ui.until('the regenerated reply', ui.idle);
+      const teaching = since(mark, '/api/teach');
+      assert.equal(teaching.length, 1, `Regenerate sent ${teaching.length} teaching requests`);
+      assert.equal(since(mark, '/api/evaluate').length, 0, 'Regenerate must not evaluate the answer again');
+      assert.equal(JSON.parse(teaching[0].body).transition, stopped.transition, "Regenerate must repeat the reply's own transition");
+      const regenerated = ui.lesson();
+      assert.deepEqual(regenerated.progress, progress, 'Regenerate changed the lesson progress');
+      assert.equal(regenerated.messages.length, messages.length, 'Regenerate must replace the reply, not add one');
+      assert.equal(regenerated.messages.at(-1).status, 'done');
+      assert.ok(regenerated.messages.at(-1).text.trim(), 'the regenerated reply is empty');
+
+      // A reload. IndexedDB does not exist in the fake DOM, so the loader's pure steps stand in for loadSaved: split
+      // into the two stored records, cloned as storage would, joined and normalized, then mounted as the saved lesson.
+      const { main, source } = splitSaved(regenerated);
+      const { lesson: restored, discarded } = normalizeSaved(joinSaved(structuredClone(main), structuredClone(source)));
+      assert.ok(restored && !discarded, 'the saved lesson was discarded');
+      const shown = ui.tutorMessages().map(ui.replyText);
+      await ui.unmount();
+      mark = requests.length;
+      reloaded = await mount(null, prompt, settings, restored);
+      assert.equal(reloaded.lesson().progress.current, regenerated.progress.current, 'the reload changed the step');
+      assert.deepEqual(reloaded.lesson().progress, regenerated.progress, 'the reload changed the progress');
+      assert.deepEqual(reloaded.lesson().messages, regenerated.messages, 'the reload changed the messages');
+      assert.deepEqual(reloaded.tutorMessages().map(reloaded.replyText), shown, 'the reload changed what the chat shows');
+      assert.equal(requests.length, mark, 'a restored lesson must not send a request');
+      return observe(reloaded);
+    } finally { await (reloaded ?? ui).unmount(); }
+  }));
+
+  test(`${preset}: a document over ${MAX_DOC_CHARS} characters is planned from an outline`, { skip }, () => timed({ preset, check: 'long document' }, async () => {
+    const doc = await ingestFile(new File([longDocument()], 'history-of-things.md'));
+    const chars = doc.chunks.reduce((n, c) => n + c.text.length, 0);
+    assert.ok(chars > MAX_DOC_CHARS, `the generated document has ${chars} characters`);
+    const starts = (n) => doc.chunks.findIndex((c) => c.text.startsWith(`# Chapter ${n}:`));
+    const chapter5 = doc.chunks.slice(starts(5), starts(6)).map((c) => c.id);
+    assert.ok(chapter5.length > 1, 'chapter 5 has several chunks');
+    const aboutTopic = doc.chunks.filter((c) => c.text.toLowerCase().includes(TOPIC)).map((c) => c.id);
+    assert.ok(aboutTopic.length && aboutTopic.every((id) => chapter5.includes(id)), 'the topic must appear only in chapter 5');
+    const mark = requests.length;
+    const ui = await mount(doc, 'Teach chapter 5.', settings);
+    try {
+      await startLesson(ui);
+      const plans = since(mark, '/api/plan');
+      assert.equal(plans.length, 1, `${plans.length} plan requests`);
+      const body = JSON.parse(plans[0].body);
+      assert.ok(body.outline && !body.chunks, 'the plan request must carry an outline, not the full text');
+      assert.equal(body.chunkIds.length, doc.chunks.length, 'the outline request lists every chunk id');
+      assert.ok(plans[0].body.length < chars / 2, `the plan request is ${plans[0].body.length} characters for a document of ${chars}`);
+      const entry = body.outline.find((e) => e.heading.startsWith('Chapter 5:'));
+      assert.deepEqual([entry?.first, entry?.last], [chapter5[0], chapter5.at(-1)], 'the outline has one entry covering chapter 5');
+      const { steps } = ui.lesson().plan;
+      for (const step of steps) assert.ok(step.chunkIds.length && step.chunkIds.every((id) => chapter5.includes(id)), `step "${step.title}" cites ${step.chunkIds} outside chapter 5`);
+      // Each step then teaches from its own chunks only.
+      const [opening] = since(mark, '/api/teach');
+      assert.deepEqual(JSON.parse(opening.body).chunks.map((c) => c.id), steps[0].chunkIds, "the opening must carry the first step's chunks");
+      return `${steps.length} steps, ${body.outline.length} outline entries, request ${(plans[0].body.length / 1024).toFixed(0)} KB for ${(chars / 1024).toFixed(0)} KB, ${chapter5.length} chunks in chapter 5`;
     } finally { await ui.unmount(); }
   }));
 }
