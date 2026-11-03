@@ -157,6 +157,7 @@ Keep `--max-instances 1`: active streams are tracked in memory, so Stop (`POST /
 ## Documentation
 
 - [DECISIONS.md](DECISIONS.md): choices and why, what was not done, known weaknesses, what to do with 4 more hours, and the test scenarios with results.
+- [`docs/evidence.md`](docs/evidence.md): the live-check runs, real-key scenarios and measurements behind DECISIONS.md.
 - [GLOSSARY.md](GLOSSARY.md): the terms the code and docs use.
 - [`docs/adr/`](docs/adr/): one short record per architectural choice.
 
