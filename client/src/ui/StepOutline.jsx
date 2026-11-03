@@ -36,7 +36,7 @@ export default function StepOutline({ lesson }) {
 
   if (wide) {
     return (
-      <aside aria-labelledby="outline-title" className="min-w-0">
+      <aside aria-labelledby="outline-title" className="sticky top-20 max-h-[calc(100dvh-6rem)] min-w-0 self-start overflow-y-auto">
         <h2 id="outline-title" className="mb-2 text-sm font-semibold text-muted">Steps</h2>
         {list}
       </aside>
@@ -44,7 +44,7 @@ export default function StepOutline({ lesson }) {
   }
   const done = plan.steps.filter((s) => stepSettled(progress.steps[s.id].status)).length;
   return (
-    <details className="card mb-4">
+    <details className="card sticky top-16 z-[5] mb-4 max-h-[calc(100dvh-5rem)] overflow-y-auto">
       <summary className="step-summary flex min-h-11 cursor-pointer list-none items-center gap-3 px-3">
         <span aria-hidden="true" className="step-chevron">▸</span>
         <span className="flex flex-1 gap-1" aria-hidden="true">
