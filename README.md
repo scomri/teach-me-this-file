@@ -78,13 +78,13 @@ The app runs on your own key. It stays in browser memory and goes to the server 
 | OpenAI | `gpt-6-luna` | `gpt-6.1-terra` | [OpenAI](https://platform.openai.com/api-keys) |
 | Anthropic | `claude-haiku-5-5` | `claude-sonnet-5-5` | [Anthropic](https://console.anthropic.com/settings/keys) |
 
-The evaluator grades answers; the teacher plans, writes replies and checks them for answer disclosure. Either model can be changed in Settings; blank fields use the defaults. Checking the connection makes a tiny request to each model and may use quota. Provider destinations are fixed on the server. OpenRouter's free (`:free`) models are not supported. Details: [Model connection](DECISIONS.md#model-connection-built).
+The evaluator grades answers; the teacher plans, writes replies and checks them for answer disclosure. Either model can be changed in Settings; blank fields use the defaults. Checking the connection makes a tiny request to each model and may use quota. Provider destinations are fixed on the server. OpenRouter's free (`:free`) models are not supported. Details: [Model connection](DECISIONS.md#model-connection-and-api-key).
 
 ## How it works
 
 The client owns the lesson: the file is read and split into passages in the browser, and the plan and progress live in browser state and IndexedDB. The server is stateless and only calls the model. For each student message, a small evaluation call labels it (answer, request for the answer, question or off-topic) and lists the key points met; code then decides the move, and a teaching reply is written for that move.
 
-More in [DECISIONS.md](DECISIONS.md): [Main decisions](DECISIONS.md#main-decisions), [Lesson planning](DECISIONS.md#lesson-planning-built), [Answering a check question](DECISIONS.md#answering-a-check-question-built), [Answer disclosure checks](DECISIONS.md#answer-disclosure-checks), [Resuming a lesson](DECISIONS.md#resuming-a-lesson-built), and the ADRs in [`docs/adr/`](docs/adr/), starting with [the plan call](docs/adr/0003-lesson-plan-call.md) and [the tutor turn](docs/adr/0005-tutor-turn.md).
+More in [DECISIONS.md](DECISIONS.md): [Main decisions](DECISIONS.md#main-decisions), [Lesson planning](DECISIONS.md#lesson-planning), [Answering a check question](DECISIONS.md#answering-a-check-question), [Answer disclosure checks](DECISIONS.md#answer-disclosure-checks), [Resuming a lesson](DECISIONS.md#architecture-and-lesson-state), and the ADRs in [`docs/adr/`](docs/adr/), starting with [the plan call](docs/adr/0003-lesson-plan-call.md) and [the tutor turn](docs/adr/0005-tutor-turn.md).
 
 ## Run locally
 
@@ -111,7 +111,7 @@ node --env-file=<your env file> --test scripts/live-check.mjs
 
 `npm run test:live` runs the same check when the keys are already set in the environment. It starts the server in-process, drives the real plan and lesson components in a fake DOM, and prints a summary table. It asserts what code controls (transitions, attempts, step status, request counts, plan validity) and counts, without asserting, what depends on the model (reply formatting, quotes, Hebrew letters in the English lesson). Gemini runs by default; `LIVE_PRESETS=gemini,openrouter` runs more. A preset without a key is skipped. It spends quota.
 
-What each scenario asserts, and three recorded Gemini runs: [How you know it works](DECISIONS.md#how-you-know-it-works) and [Live check runs](DECISIONS.md#live-check-runs).
+What each scenario asserts, and three recorded Gemini runs: [How you know it works](DECISIONS.md#how-you-know-it-works) and [Live check runs](docs/evidence.md#live-check-runs).
 
 </details>
 
