@@ -48,6 +48,10 @@ export async function requestPlan({ doc, prompt, settings, wholeFile = false, si
   return body;
 }
 
+// Resolves once the server itself answers, whatever the model is doing: a slow answer means the server is
+// starting (Cloud Run scales to zero), not that the model is slow. Never rejects.
+export const pingServer = (signal, fetchImpl = fetch) => fetchImpl('/api/health', { signal }).then(() => {}, () => {});
+
 export async function checkPlan({ plan, settings, signal }, fetchImpl = fetch) {
   let response;
   try {

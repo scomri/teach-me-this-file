@@ -31,10 +31,14 @@ const step = (n) => ({ id: `s${n}`, title: `Step ${n}`, objective: 'o', chunkIds
 const planOf = (n) => ({ title: 'A lesson', steps: Array.from({ length: n }, (_, i) => step(i + 1)) });
 const constraints = (over = {}) => ({ language: 'English', audience: null, style: null, minutes: null, steps: null, outsideSources: false, maxSteps: 5, ...over });
 
-async function mount(replies, { prompt = 'teach it', restoredPlan = null } = {}) {
+async function mount(replies, { prompt = 'teach it', restoredPlan = null, health = () => Response.json({ ok: true }) } = {}) {
   const sent = [];
   // A reply is a result body, or a function of the fetch init for a custom response (an error, a hanging request).
-  globalThis.fetch = async (url, init) => { sent.push(JSON.parse(init.body)); const r = replies.shift(); return typeof r === 'function' ? r(init) : Response.json(r); };
+  // The health ping during a wait is answered by `health`, separately from the model replies.
+  globalThis.fetch = async (url, init) => {
+    if (url === '/api/health') return health(init);
+    sent.push(JSON.parse(init.body)); const r = replies.shift(); return typeof r === 'function' ? r(init) : Response.json(r);
+  };
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -217,4 +221,34 @@ test('planning and restored-plan checks identify the unavailable model role', as
     assert.ok(ui.button('Open Settings'));
     await ui.unmount();
   }
+});
+
+test('a plan wait adds "Waking the server…" only while the server itself takes over 3 seconds to answer', async (t) => {
+  let wake;
+  const hanging = (init) => new Promise((resolve) => init.signal.addEventListener('abort', () => resolve(Response.json({}))));
+  const ui = await mount([hanging], { health: () => new Promise((r) => { wake = () => r(Response.json({ ok: true })); }) });
+  const status = () => ui.container.querySelector('[role="status"]').textContent;
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await act(async () => { ui.button('Plan').dispatchEvent(new window.Event('click', { bubbles: true })); });
+  await act(async () => t.mock.timers.tick(2999));
+  assert.equal(status(), 'Planning from …');
+  await act(async () => t.mock.timers.tick(1));
+  assert.equal(status(), 'Planning from … Waking the server…');
+  await act(async () => { wake(); await new Promise((r) => setImmediate(r)); });
+  assert.equal(status(), 'Planning from …');
+  t.mock.timers.reset();
+  await ui.click('Cancel');
+  await ui.unmount();
+});
+
+test('a warm server answers the ping at once, so a slow plan never says the server is waking', async (t) => {
+  const hanging = (init) => new Promise((resolve) => init.signal.addEventListener('abort', () => resolve(Response.json({}))));
+  const ui = await mount([hanging]);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  await act(async () => { ui.button('Plan').dispatchEvent(new window.Event('click', { bubbles: true })); await new Promise((r) => setImmediate(r)); });
+  await act(async () => t.mock.timers.tick(10000));
+  assert.doesNotMatch(ui.container.querySelector('[role="status"]').textContent, /Waking/);
+  t.mock.timers.reset();
+  await ui.click('Cancel');
+  await ui.unmount();
 });
