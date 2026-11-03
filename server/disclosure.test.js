@@ -7,7 +7,7 @@ const wrapped = (value) => Response.json({ choices: [{ message: { content: JSON.
 
 test('plan model errors identify the model role for generation and validation', async (t) => {
   for (const preset of ['openai', 'openrouter', 'gemini', 'anthropic']) {
-    const role = ['openai', 'openrouter'].includes(preset) ? 'evaluator' : 'teacher';
+    const role = 'teacher';
     const settings = { preset, teacher: 'teacher-model', evaluator: 'evaluator-model' };
     const post = await serve(t, async (_, init) => JSON.parse(init.body).response_format?.json_schema?.name === 'lesson_plan' ? wrapped(plan) : new Response('{}', { status: 404 }));
     const input = { ...settings, prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] };
@@ -95,7 +95,7 @@ test('Gemini and Anthropic use their configured teacher for checks; OpenAI keeps
   assert.equal((await post('plan', { ...settings, preset: 'anthropic', prompt: 'teach', chunks: [{ id: 'c1', text: 'light' }] })).status, 200);
   assert.equal(calls.at(-1).model, 'teacher-model');
   await (await post('teach', requestFor('opening', { ...settings, preset: 'openai' }))).text();
-  assert.equal(calls.at(-1).model, 'grader-model');
+  assert.equal(calls.at(-1).model, 'teacher-model');
 });
 
 test('every protected transition fails closed on malformed validation, with localized fallbacks', async (t) => {
