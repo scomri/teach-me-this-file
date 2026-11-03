@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { MAX_DOC_CHARS, MAX_MODEL_CHARS, MAX_PROMPT_CHARS, MAX_STEPS, PLAN_OUTPUT_TOKENS } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
 import { chatCompletion } from '../ai/adapter.js';
-import { checkDisclosure, validationModel, validationRole } from '../ai/disclosure.js';
+import { checkDisclosure } from '../ai/disclosure.js';
 import { providerOutcome } from '../ai/errors.js';
 import { CAPS, MAX_POINTS, PLAN_RESPONSE_FORMAT, validatePlan } from '../ai/plan.js';
 import { buildPlanMessages, repairMessages } from '../ai/prompts/plan.js';
@@ -89,8 +89,8 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
     const disconnect = () => { if (!res.writableEnded) controller.abort(); };
     res.on('close', disconnect);
     try {
-      const flagged = await checkDisclosure({ preset, apiKey, model: validationModel(preset, teacher, evaluator), signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
-      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged, ...(flagged === 'model_not_found' && { role: validationRole(preset) }) });
+      const flagged = await checkDisclosure({ preset, apiKey, model: teacher?.trim() || PRESETS[preset].teacher, signal: controller.signal, fetchImpl, candidates: steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) });
+      if (typeof flagged === 'string') return res.status(STATUS[flagged]).json({ code: flagged, ...(flagged === 'model_not_found' && { role: 'teacher' }) });
       if (flagged === null) return res.status(502).json({ code: 'plan_check_failed' });
       return res.json({ flagged });
     } catch { if (!res.destroyed) res.status(502).json({ code: 'plan_check_failed' }); }
@@ -126,8 +126,8 @@ export function planRouter(fetchImpl, timeoutMs = 90_000) {
           const { plan, constraints, coverage, coverageNote, documentLanguage } = result;
           if (!plan) return res.json({ plan, constraints, coverage, coverageNote, documentLanguage });
           let flagged = null;
-          try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: validationModel(request.preset, request.model, request.evaluator), signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
-          if (typeof flagged === 'string') return fail(flagged, validationRole(request.preset));
+          try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.model, signal: controller.signal, fetchImpl, candidates: plan.steps.map((s) => ({ text: s.checkQuestion, keyPoints: s.expected })) }); } catch { /* report an unavailable validator */ }
+          if (typeof flagged === 'string') return fail(flagged, 'teacher');
           if (flagged === null) return res.status(502).json({ code: 'plan_check_failed', ...(lastFlagged.length && { flagged: lastFlagged }) });
           if (!flagged.length) return res.json({ plan: { ...plan, validated: true }, constraints, coverage, coverageNote, documentLanguage });
           lastFlagged = flagged.map((i) => i + 1);

@@ -78,7 +78,7 @@ The app runs on your own key. It stays in browser memory and goes to the server 
 | OpenAI | `gpt-6-luna` | `gpt-6.1-terra` | [OpenAI](https://platform.openai.com/api-keys) |
 | Anthropic | `claude-haiku-5-5` | `claude-sonnet-5-5` | [Anthropic](https://console.anthropic.com/settings/keys) |
 
-The evaluator grades answers; the teacher plans and writes replies. Either model can be changed in Settings; blank fields use the defaults. Checking the connection makes a tiny request to each model and may use quota. Provider destinations are fixed on the server. OpenRouter's free (`:free`) models are not supported. Details: [Model connection](DECISIONS.md#model-connection-built).
+The evaluator grades answers; the teacher plans, writes replies and checks them for answer disclosure. Either model can be changed in Settings; blank fields use the defaults. Checking the connection makes a tiny request to each model and may use quota. Provider destinations are fixed on the server. OpenRouter's free (`:free`) models are not supported. Details: [Model connection](DECISIONS.md#model-connection-built).
 
 ## How it works
 

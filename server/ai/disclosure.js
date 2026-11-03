@@ -10,11 +10,6 @@ const format = { type: 'json_schema', json_schema: { name: 'disclosure_check', s
   },
 } } };
 
-export const validationRole = (preset) => ['gemini', 'anthropic'].includes(preset) ? 'teacher' : 'evaluator';
-export const validationModel = (preset, teacher, evaluator) => validationRole(preset) === 'teacher'
-  ? teacher?.trim() || PRESETS[preset].teacher
-  : evaluator?.trim() || PRESETS[preset].evaluator;
-
 // One result per candidate: a missing, uncertain or malformed judgment is never approval.
 export async function checkDisclosure({ preset, apiKey, model, candidates, signal, fetchImpl, retry }) {
   const data = neutralize(JSON.stringify(candidates));
