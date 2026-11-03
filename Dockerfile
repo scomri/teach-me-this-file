@@ -1,4 +1,4 @@
-FROM node:24.22.1 AS build
+FROM node:24.22.2 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -6,7 +6,7 @@ COPY client ./client
 COPY shared ./shared
 RUN npm run build
 
-FROM node:24.22.1-slim
+FROM node:24.22.2-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY package.json package-lock.json ./
