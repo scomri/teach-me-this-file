@@ -26,7 +26,7 @@ Upload a document, say what the lesson should be, and a tutor teaches it step by
 2. **Pick a file.** Choose a PDF, DOCX, PPTX, TXT or MD file (see [Limits](#limits)).
 3. **Write a prompt (optional).** For example: "Teach the main ideas in 10 minutes, in English, for 10th graders." Leave it empty to plan the whole file with the defaults. Choose **Plan**.
 4. **Review the plan.** Read the steps, their check questions and the pages they draw on. Notes under the plan say if the file covers only part of the request, or if you asked for something the app does not do. **Regenerate** asks for a new plan; **Start** opens step 1.
-5. **Take the lesson.** The tutor explains the step and asks its check question. Answer in the box (Enter sends, Shift+Enter adds a line). Open **Source** under a message to read the passage it used. The step outline shows where you are: beside the chat on wide screens, behind the progress bar on a phone.
+5. **Take the lesson.** The tutor explains the step from your file, then asks a check question that applies it to a case. Answer in the box (Enter sends, Shift+Enter adds a line). Open **Source** under a message to read the passage it used. The step outline shows where you are: beside the chat on wide screens, behind the progress bar on a phone.
 6. **Read the recap.** After the last step the tutor sums up the lesson, separating the steps you answered from the ones it had to show you. **New lesson** in the header clears everything.
 
 ### Good to know
