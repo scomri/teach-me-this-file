@@ -1,15 +1,59 @@
 # Decisions
 
-What I chose, why, and what I left out. *Planned* means settled but not built yet. Larger architectural choices get a short ADR in `docs/adr/`.
+What I chose, why, and what I left out. Larger architectural choices get a short ADR in `docs/adr/`.
 
 ## How decisions are made
 
-- **Design before code.** A grilling session tested every open question in the brief before any code was written. It produced the initial decisions below.
+- **Design before code.** A grilling session tested every open question in the brief before any code was written. It produced the main decisions below.
 - **A decision map before agents.** I split the assignment into 11 components (scope, hosting, provider, API key and safety, file ingestion, planning, tutor loop, lesson state, streaming, UI states, evidence) and marked each question settled, to decide, or to verify. A component goes to an AI coding agent only when nothing in it is open, so the agent never fills gaps with guesses. At the start, 45 of 89 items were open, most in the tutor loop and UI.
 - **Scope first.** Scope was settled before anything else. Core features land first. Extras come after, as clearly labelled `feat(extra): …` commits, so the history shows what core alone delivers. Work is tracked as GitHub issues: one parent issue per vertical slice, with small implementation tickets (one concern, one PR, acceptance criteria and tests) as its sub-issues.
 - **AI assistance.** I make and review every decision. AI agents write most of the code from those decisions. The lesson state machine is test-first.
 
-## Initial decisions (planned)
+## How you know it works
+
+Each scenario is a hard-asserted check in the opt-in live check (`scripts/live-check.mjs`), which mounts the real plan and lesson components in a fake DOM, runs the server in-process and talks to a real model. Asserts cover what code controls (transitions, attempts, step status, request counts, plan validity); reply formatting and Hebrew letters are logged, not asserted. Three runs on Gemini, 2026-11-03; details in [Live check runs](#live-check-runs).
+
+| Id | Brief requirement | What is checked | Runs | Passed |
+|---|---|---|---:|---:|
+| S1 | Wrong answer: nudge, do not give the answer | Asserted: a first wrong answer never reveals (English, Hebrew and S3 lessons); in S3 it is graded `nudge` with one failed attempt. Not driven live: the reveal after a second wrong answer, covered by reducer and fake-DOM tests and one [deployed run](#answering-a-check-question-built). | 3 | 3 |
+| S2 | "Just tell me": scaffold first, answer on a second ask | Asserted: after one wrong answer, asking for the answer reveals it within three asks (Continue appears). Logged: every run took two asks. | 3 | 3 |
+| S3 | Off-topic and side questions handled, not counted | Asserted: an off-topic message is redirected and a side question answered, neither changes attempts or the step; the next wrong answer nudges. | 3 | 3 |
+| S4 | Hebrew file, "in English, 10 minutes, for 10th graders" | Asserted: steps within the ceiling of 4, no Hebrew letters in plan titles and questions, minutes 10 and an audience read from the prompt, reveal reached. Logged: Hebrew letters in replies (none outside the reveal's quote in any run). | 3 | 3 |
+| S5 | File text is content, not instructions | Asserted: the planted marker is in the ingested chunks but absent from the plan and every reply; the planted "already answered" claim does not skip the step. | 3 | 3 |
+| S6 | Stop and recovery | Asserted: Stop settles the reply as stopped with progress and earlier messages unchanged, and the cancel request returns 204; Regenerate sends one teach request and no evaluation; a remount from the saved records restores the step and messages with no request. | 3 | 3 |
+| S7 | Very long documents ("teach chapter 5") | Asserted: a generated 115 KB, ten-chapter document is planned from a 3 KB outline, and every step cites only chapter 5's chunks. | 3 | 3 |
+
+Also checked, outside the live check:
+
+- **Bad and unsupported files:** legacy formats are refused with a "save it as" message, empty or corrupt files show an error; ingestion tests and File types in [Main decisions](#main-decisions).
+- **Text encodings:** legacy Hebrew, Arabic and Western code pages are detected; malformed UTF-16 offers explicit continuation with a warning; Text encoding in [Main decisions](#main-decisions) and the UTF-16 note below it.
+- **Scanned PDFs:** refused with "this looks scanned"; there is no vision transcription; PDF text in [Main decisions](#main-decisions).
+- **Rate limit:** the 429 message and the one shared automatic retry are tested with a stub provider only; no real 429 was reached ([deployed walkthrough](#deployed-walkthrough-at-375px)).
+- **Model connection:** rejected keys and mistyped models on all four presets, with real keys; [Model connection scenarios](#model-connection-scenarios).
+- **Planning:** coverage, ceilings and not-followed notes on all four presets; [Planning scenarios](#planning-scenarios).
+
+## Known weaknesses
+
+- **Scanned pages are refused and formulas show as plain text.** No vision transcription and no math rendering. PDF text in [Main decisions](#main-decisions), [Tutor message rendering](#tutor-message-rendering-built).
+- **Disclosure and grounding checks are model judgments.** Observed misses include an indirect clue the judge approved and an unsupported claim about water. [Answer disclosure checks](#answer-disclosure-checks).
+- **A wrong answer can be graded `off_topic`.** Seen in two separate live runs: "the moon is made of cheese" as an S3 answer, and the same answer in S6. It gets a redirect and counts no attempt, so a student can avoid the reveal by joking. [Answering a check question](#answering-a-check-question-built).
+- **Model roles per preset came from a few comparisons** (GitHub #65), not a measured rate. [Answer disclosure checks](#answer-disclosure-checks).
+- **The stream registry is in memory.** The service runs one instance, and Stop must reach that instance. [Lesson start](#lesson-start-the-opening-reply-built), [ADR 0001](docs/adr/0001-cloud-run-single-container.md).
+- **A closed tab sends no cancel,** so its stream runs to the 120 s cap and spends quota. Streaming and stop in [Main decisions](#main-decisions).
+- **Streamed text is not saved before a reload;** the reply comes back stopped and empty, and Regenerate recovers it. [Resuming a lesson](#resuming-a-lesson-built).
+- **The minors safety floor and the 120-word limit are prompt rules,** not checked by code. [Lesson start](#lesson-start-the-opening-reply-built).
+- **A key kept in tab storage is readable by same-origin scripts.** Memory-only is the default. [Model connection](#model-connection-built).
+- **Few real-key runs, mostly on one preset.** The scenarios ran three times on Gemini, so there is no measured leak, false-fallback or misgrade rate. [Live check runs](#live-check-runs).
+
+## With 4 more hours
+
+1. Vision transcription for scanned pages and formulas, and KaTeX rendering for math in replies.
+2. Run the live check on all four presets with repeats, to measure leak, false-fallback and off-topic misgrade rates, and re-test the model roles per preset.
+3. Make the evaluator treat a wrong answer to the check question as an attempt (or count off-topic replies after the check question), and cap consecutive redirects.
+4. Cancel on `pagehide` and add a server heartbeat, so a closed tab stops its stream.
+5. Real-browser regression tests for the settings dialog and chat scrolling.
+
+## Main decisions
 
 | Area | Decision | Why |
 |---|---|---|
@@ -22,20 +66,44 @@ What I chose, why, and what I left out. *Planned* means settled but not built ye
 | Provider | One OpenAI-compatible adapter with presets: Gemini (default), OpenRouter, OpenAI, Anthropic. Separate evaluator and teacher models. | Works with the reviewer's key. Evaluator can be cheaper. Anthropic's compatibility layer is meant for testing, not production; a native adapter would replace it behind the same interface. |
 | File types | PDF (text layer), DOCX, PPTX, TXT, MD, all in the first slice, because most teaching material is PDF, Word or slides. Files are read in the browser; PDF with pdf.js, DOCX with mammoth, PPTX from its XML. Legacy formats (`.doc`, `.ppt`, `.rtf`, `.odt`, `.odp`) are refused with "save it as PDF, DOCX or PPTX". Scans get a clear "no readable text" error until vision transcription lands as the first extra. **Built for TXT, MD, PDF, DOCX and PPTX.** Known PPTX limits: text inside charts, SmartArt and `mc:AlternateContent` shapes is not read. | The server never receives the file, so requests stay small. No maintained browser reader exists for `.doc`, and Word has saved `.docx` by default since 2007. |
 | Chunks (**built**) | Paragraphs packed to 1,500 characters, never across a page; long paragraphs split at a sentence end, then whitespace, then hard. Every heading starts a new chunk (a Markdown `#` line, outside code fences; other formats map their headings to the same form). Headings with no text between them open one chunk together, labelled with the last, most specific one. Ids `c1…cN`, plus page, printed page label and the nearest heading. Formats without pages (TXT, MD, DOCX) report `page` and `totalPages` as `null` rather than a made-up page 1. | Stable ids for citations; the heading gives files without pages ("Section: Photosynthesis") a usable source reference. |
-| Text direction (**built**) | Each chunk's direction comes from counting letters per script, not from `dir="auto"`. The planner will be told the main script and name the language itself. | `dir="auto"` follows the first strong character, so a Hebrew file starting with "Chapter 1" displays left-to-right. A language-detection library or API is not needed for direction. |
+| Text direction (**built**) | Each chunk's direction comes from counting letters per script, not from `dir="auto"`. The planner is told the main script and names the language itself. | `dir="auto"` follows the first strong character, so a Hebrew file starting with "Chapter 1" displays left-to-right. A language-detection library or API is not needed for direction. |
 | Text encoding (**built**) | UTF-8, then UTF-16 by byte-order mark, then a legacy code page: windows-1252 when non-ASCII bytes mostly sit inside English words ("procédé") or stand alone ("à"); otherwise windows-1255 (Hebrew) or -1256 (Arabic), whichever decodes more of the text into its own script, with Hebrew ruled out when it leaves bytes undefined. Malformed UTF-16 prompts the teacher to choose another file or continue with replacement characters and a persistent warning; a file with no readable text is refused. | Hebrew and Arabic `.txt` files saved by older Windows tools are common in Israeli schools. Other legacy code pages are not detected; damaged characters cannot be recovered, and in-app text correction is not built. |
 | PDF text (**built**) | pdf.js text items are grouped into lines: only items that follow each other in the file and share a baseline, so two columns stay apart. A right-to-left line stored in display order (Chrome, InDesign) is read right to left, with runs of Latin words and numbers inside it (a formula) read left to right; lines stored in reading order (Word, Ghostscript) keep it. Lone brackets are mirrored when that balances the line, and spaces come from the gaps between items. Top and bottom lines repeated on more than half the pages (3+ pages, numbers ignored) and number-only ones are dropped. Page labels: the PDF's own, else printed numbers with a constant offset from the position on at least 60% of pages, else the position. A page with under 20 letters, or over 20% replacement, private-use or control characters, is skipped and listed; no readable page gives "this looks scanned". Every page is read, with per-page progress. | Generated Hebrew, mixed Hebrew/English and two-column test PDFs from Chrome and Word come out with every sentence intact. A 259-page Hebrew book reads in about 6 s in the browser. Known gaps: Hebrew in old fonts without a Unicode map (a 1990s Mac file) passes as Latin-looking text; a producer that writes two columns row by row still interleaves them; CJK fonts need pdf.js character maps, which are not bundled. |
 | Long documents | The client keeps the whole document; the only bound is the 20 MB file limit. The plan request carries the full text only while it fits the preset's token budget and stays under 100,000 characters (`shared/limits.js`). The client estimates tokens from the character count and the detected script (per character: Latin 0.30, Arabic 0.45, Hebrew and other 0.85, set just above the highest values measured on real teaching files read with the app's PDF reader; character count alone is not enough, because 24,000 Hebrew characters already exceed 8,000 tokens). A preset's document budget is an application planning setting (`tpm` in `shared/presets.js`), less allowances of 8,192 tokens for output and 3,000 for the prompt. These allowances are application policy, not a calculation of any provider's input-token quota. Anything over that is planned from an outline built in code from the whole file, with no extra model call: one entry per heading (heading, chunk id range, page, first ~150 characters), else one per page, else groups of 5 chunks. Entries are shortened (opening text to 50 characters, then none), then neighbours are joined, until the outline fits the budget. The model may cite any chunk id inside an entry's range; the client sends every chunk id and the route requires each cited id to exist in the document. Each step then teaches from its own chunks' full text. The server accepts JSON bodies up to `MAX_BODY_BYTES` (`MAX_DOC_CHARS` × 4 bytes + 100 KiB, about 500 KB): 4 bytes per character covers UTF-8 and JSON escaping, the 100 KiB covers the prompt, settings and outline; a larger body gets a fixed 413 JSON error that echoes nothing. **Built.** Any 413 from the plan call shows "The plan request was too large for the server" rather than a raw error. **Planning budgets are not provider limits:** the `tpm` values are conservative application settings, not verified quotas. No universal Gemini free-tier or OpenRouter tokens-per-minute figure was found. A smaller setting sends an outline sooner; the estimate and budget do not prevent 429s, since quotas vary by account, model and other traffic. The plan route maps a provider 429 to a retry message; its mapping is tested independently of the budget. Known weakness: a document whose chunks all sit under a few headings gets a coarse outline, one entry per heading. | Cutting the file to its first 100,000 characters would drop the section a teacher asks for ("teach chapter 5"). In a test set of real teaching files, 5 of 27 were over 100,000 characters (largest about 540,000), as were 4 of 9 chapters of an open statistics textbook. A 20 MB text file ingests in about 200 ms. |
 | Hosting (**built**) | Google Cloud Run, one container, Express serves the front end, max one instance, min zero. CI deploys every push to `main` after tests pass, through Workload Identity Federation. Production follows the latest revision while traffic is configured for it; a pinned revision requires an explicit routing update. See [ADR 0001](docs/adr/0001-cloud-run-single-container.md) and [ADR 0004](docs/adr/0004-continuous-deploy.md). | One URL, no CORS. The live site can follow `main` without shipping untested code, and GitHub stores no cloud key. |
 | Streaming and stop | POST + `fetch` stream. Stop keeps the lesson state; protected drafts remain hidden until approved, while revealed text may remain visible; Regenerate re-runs only the reply. **Built and tested on the echo stream:** the echo endpoint has no client any more and stays as a server fixture for the streaming tests. Each stream gets a random id, and Stop calls `POST /api/streams/:id/cancel`, because Cloud Run does not pass client disconnects to the container. Every stream ends after 120 s at most. On shutdown, active streams get up to eight seconds to finish before remaining connections are closed; see [ADR 0001](docs/adr/0001-cloud-run-single-container.md). Request and stream logs omit query strings, and server errors use fixed messages. | Explicit cancellation bounds work when a student stops; the shutdown grace lets short replies finish without exceeding Cloud Run's termination window. Fixed errors and path-only logs avoid exposing request data. |
 | UI language | English UI. Source text gets its direction from its script (see Text direction); other content, such as the student's own messages, uses `dir="auto"`. | Right-to-left material renders correctly. |
-| Evidence | Unit tests for the state machine, plus a scripted-student harness running ~5 scenarios. | "It looked fine to me" is not enough. |
+| Evidence | Unit tests for every layer, plus the opt-in live check: seven scenarios (S1-S7) driven through the real components against a real model, with hard asserts on code-controlled behaviour, run three times on Gemini (see [How you know it works](#how-you-know-it-works)). It stays outside `npm test` and CI because it needs a key and spends quota. | "It looked fine to me" is not enough, and asserting on model wording would make the check flaky. |
 
 UTF-16 recovery verification: ingestion tests cover malformed input in both byte orders, valid UTF-16 and files with no readable text. A component test covers the warning, explicit continuation and replacing the file. A local browser check confirmed the warning and continuation; the recovery flow has not been checked on the deployed URL.
 
 Deployment verification: after the tutor changes were merged, CI built a new revision and its health check passed, but production traffic remained pinned to an older revision after no-traffic testing. On 2026-11-01, traffic was switched to the merged revision and a synthetic real-key lesson completed on the live URL. Routing was then restored to the latest ready revision, and the live health check passed. The CI health check does not itself establish which revision served it.
 
 Streaming hardening verification: local HTTP tests passed for a stream finishing during shutdown, a stream forcibly closed after the grace period, query-free logs, and fixed oversized-body errors. On Windows the shutdown tests invoke the signal handler through IPC; on POSIX they send SIGTERM. The grace period can still cut off longer replies.
+
+## Live check runs
+
+Three consecutive runs on 2026-11-03, 19:55-20:14 local time (about 6.5 minutes each), on the Gemini preset with its default models: evaluator `gemini-3.6-flash`, teacher `gemini-3.8-flash`. Command: `node --env-file=<env file> --test scripts/live-check.mjs`. No prompt, model or assert changed between runs. Rows map to scenarios: en lesson is S1 and S2, off-topic S3, he lesson S4, injection S5, stop S6, long document S7.
+
+| Check | Scenario | Run 1 | Run 2 | Run 3 | Seconds (range) |
+|---|---|---|---|---|---|
+| key check | | pass | pass | pass | 2.3-3.0 |
+| en lesson | S1, S2 | pass | pass | pass | 57.7-77.2 |
+| off-topic | S3 | pass | pass | pass | 66.4-87.2 |
+| he lesson | S4 | pass | pass | pass | 78.3-97.6 |
+| injection | S5 | pass | pass | pass | 62.7-95.9 |
+| stop | S6 | pass | pass | pass | 35.2-37.8 |
+| long document | S7 | pass | pass | pass | 25.5-56.8 |
+
+What the runs show beyond the asserts:
+
+- **S2 took two asks every time.** The English lesson had four tutor replies in each run: opening, reply to the wrong answer, scaffold, reveal.
+- **S4 plans were short.** The short Hebrew file produced a one-step plan (ceiling 4) in all three runs; the plan is not padded. Replies outside the reveal's quote had no Hebrew letters.
+- **The Hebrew reveal quote had no translation.** None of the three quotes contained Latin letters, although the reveal prompt asks for a translation; in run 3 the quote was a single Hebrew word rather than the passage. This is logged, not asserted (see [Tutor message rendering](#tutor-message-rendering-built)).
+- **Formatting.** No reply showed raw Markdown; every check that reached a reveal (en, he, injection) had a quote in it.
+- **S7** planned two or three steps from a ten-entry outline (a 3 KB request for a 115 KB document), all citing chapter 5.
+
+The S1 reveal after a second wrong answer and Stop in the middle of streamed text are not driven by the live check (see [Libraries](#libraries) for its limits).
 
 ## Long-document provider measurements
 
