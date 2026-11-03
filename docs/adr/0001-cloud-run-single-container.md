@@ -18,7 +18,7 @@ The app needs a public URL, server-side streaming of model replies, and a server
 ## Consequences
 
 - Active streams live in an in-memory map. Cancel only works because every request reaches the same instance. Raising max-instances needs sticky routing or a shared store first.
-- A cold start costs **4–7 s** on the first request after the instance has scaled to zero (two samples: 7.3 s and 4.2 s, of which 6.5 s and 3.5 s were Cloud Run starting the container; a warm request takes 0.2 s). Idle instances were still warm after 17 minutes. The client warms the server with `/api/health` on load and shows a "waking the server" state if the first request takes over 1.5 s.
+- A cold start costs **4–7 s** on the first request after the instance has scaled to zero (two samples: 7.3 s and 4.2 s, of which 6.5 s and 3.5 s were Cloud Run starting the container; a warm request takes 0.2 s). Idle instances were still warm after 17 minutes. The first request after a cold start is usually the plan, which takes about 10 s even when warm, so its own duration cannot reveal a cold server. While a plan runs, the client pings `/api/health` and adds "Waking the server…" if the ping has not answered within 3 s; the lesson screen adds the same line when its first request has not answered within 3 s.
 - The server stays stateless apart from the live stream map. A restart can still interrupt replies that outlast the shutdown grace period.
 - The cancel POST must carry a body length. The front end rejects a bodyless POST without `Content-Length` with 411. Browsers send `Content-Length: 0`; scripts must send an empty body.
 - HTTP/2 end-to-end (`--use-http2`) is off: Express speaks HTTP/1.1 only.

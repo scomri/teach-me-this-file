@@ -57,7 +57,7 @@ Key design rules:
 - **Lesson length is a ceiling, never padded.** Steps ≤ minutes ÷ 2.5, clamped to 1–10 (5 with no minutes), from `shared/limits.js`. There is no minimum lesson length. Requests the app does not follow (more steps than the ceiling, outside sources, a topic the file lacks) are bounded by code and the plan screen says so.
 - **Grounding:** the tutor teaches only from the current step's source chunks. Tutor messages cite all chunks supplied to the teacher; the UI shows their pages or sections.
 - **File text is content, not instructions.** Delimit it in prompts. Test with a file containing "ignore your instructions".
-- **Streaming:** POST + `fetch` ReadableStream. Client uses `AbortController` for Stop; server aborts the upstream provider call on client disconnect.
+- **Streaming:** POST + `fetch` ReadableStream. Client uses `AbortController` for Stop and sends the explicit cancel on Stop and on `pagehide` (Cloud Run does not pass disconnects through); the server aborts the upstream provider call on cancel or disconnect. Switching tabs must never stop a reply.
 
 ## API key rule (hard constraint)
 

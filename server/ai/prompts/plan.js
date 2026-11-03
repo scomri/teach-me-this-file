@@ -56,8 +56,8 @@ Each step has:
 - title: short and unique.
 - objective: what the student will be able to do after the step.
 - chunkIds: the ids of the chunks that step teaches from. At least one, each an id that exists in the document. No two steps may use the same set of chunks.
-- checkQuestion: one question that checks the objective, answerable from those chunks.
-- expected: 1 to ${MAX_POINTS} key points a correct answer should cover. Key points, not a model answer.`;
+- checkQuestion: one question that checks the objective by asking the student to apply the step's idea to a case or example, answerable by reasoning from those chunks. The tutor explains the idea before asking, so never ask the student to recall or restate what the chunks say.
+- expected: 1 to ${MAX_POINTS} key points a correct answer should cover: the conclusion and reasoning of that application. Key points, not a model answer.`;
 
 const COVERAGE_CHECK = `Coverage. Compare what the teacher request asks to be taught with what the document contains, and report coverage and coverageNote. Teach only what the document contains; never fill a gap from your own knowledge.
 - full: the document contains everything asked, or the request names no topic (then plan the document's main ideas). coverageNote is an empty string.

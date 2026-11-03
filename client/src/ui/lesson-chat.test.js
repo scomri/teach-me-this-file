@@ -186,6 +186,33 @@ test('Stop before the stream is named cancels it once the id arrives', async () 
   await ui.unmount();
 });
 
+test('leaving the page stops the reply in flight, as Stop does; hiding the tab does not', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => { ui.teach[0].stream.start('id-1'); ui.teach[0].stream.text('Plants '); });
+  Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+  await ui.feed(() => document.dispatchEvent(new window.Event('visibilitychange')));
+  delete document.visibilityState;
+  assert.deepEqual(ui.cancelled, []);
+  assert.ok(ui.button('Stop'), 'a hidden tab keeps its reply');
+  await ui.feed(() => window.dispatchEvent(new window.Event('pagehide')));
+  assert.deepEqual(ui.cancelled, ['id-1']);
+  assert.match(ui.text(), /Stopped/); // what a page restored from the back-forward cache shows
+  assert.ok(ui.button('Regenerate'));
+  await ui.unmount();
+});
+
+test('leaving the page before the stream is named stops it, and cancels it if the id still arrives', async () => {
+  const ui = await mount();
+  await ui.click('Start');
+  await ui.feed(() => window.dispatchEvent(new window.Event('pagehide')));
+  assert.deepEqual(ui.cancelled, []);
+  assert.match(ui.text(), /Stopped/);
+  await ui.feed(() => ui.teach[0].stream.start('id-late'));
+  assert.deepEqual(ui.cancelled, ['id-late']);
+  await ui.unmount();
+});
+
 test('Regenerate sends a teach request with the same transition and replaces the reply', async () => {
   const ui = await mount();
   await ui.click('Start');

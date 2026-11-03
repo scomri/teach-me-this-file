@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { MAX_ANSWER_CHARS, MAX_HISTORY_TURNS, MAX_MODEL_CHARS, MAX_STEPS, MAX_TUTOR_CHARS, TEACH_OUTPUT_TOKENS, TURN_RATE_LIMIT_RETRIES } from '../../shared/limits.js';
 import { PRESETS } from '../../shared/presets.js';
-import { protectsUnansweredPoints } from '../../shared/transitions.js';
+import { opensStep, protectsUnansweredPoints } from '../../shared/transitions.js';
 import { chatCompletion } from '../ai/adapter.js';
 import { checkDisclosure } from '../ai/disclosure.js';
 import { providerTelemetry } from '../ai/telemetry.js';
@@ -150,7 +150,12 @@ export function teachRouter(fetchImpl, log, streams, streamMaxMs) {
       if (!any || (protectedReply && !complete)) return stream.end('unreachable');
       if (protectedReply) {
         let flagged = null;
-        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.model, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [{ text: draft, keyPoints: request.protectedPoints, source: request.chunks, ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }) }] }); } catch { /* fail closed */ }
+        const candidate = {
+          text: draft, keyPoints: request.protectedPoints, source: request.chunks,
+          ...(request.transition === 'advance' && { masteredPoints: request.answered.expected }),
+          ...(opensStep(request.transition) && { opensStep: true, checkQuestion: request.step.checkQuestion }),
+        };
+        try { flagged = await checkDisclosure({ preset: request.preset, apiKey, model: request.model, signal: stream.signal, fetchImpl: telemetry.fetch, retry, candidates: [candidate] }); } catch { /* fail closed */ }
         if (stream.signal.aborted) return;
         stream.write({ text: flagged?.length === 0 ? draft : fallback(request) });
       }

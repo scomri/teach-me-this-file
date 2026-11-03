@@ -117,6 +117,21 @@ test('every protected transition fails closed on malformed validation, with loca
   assert.ok(calls.filter((c) => !c.stream).every((c) => c.model === 'gemini-3.8-flash'));
 });
 
+test('a draft that opens a step is flagged as one and checked against its check question; other moves are not', async (t) => {
+  const candidates = [];
+  const post = await serve(t, async (_, init) => {
+    const body = JSON.parse(init.body);
+    if (body.stream) return streamText('Safe text');
+    candidates.push(body.messages[1].content);
+    return wrapped({ flagged: [], uncertain: false });
+  });
+  await (await post('teach', requestFor('opening'))).text();
+  await (await post('teach', requestFor('advance', { answered: { ...answered, pointsMet: [0, 1] }, step: { index: 2, total: 2, title: 'Next', objective: 'Explain', checkQuestion: 'Next?' } }))).text();
+  await (await post('teach', requestFor('nudge', { answered }))).text();
+  const question = (c) => c.match(/"checkQuestion":("(?:[^"\\]|\\.)*")/)?.[1];
+  assert.deepEqual(candidates.map((c) => [c.includes('"opensStep":true'), question(c)]), [[true, '"Why?"'], [true, '"Next?"'], [false, undefined]]);
+});
+
 test('approved drafts appear only after validation; reveal and recap skip the check', async (t) => {
   const calls = [];
   const post = await serve(t, async (_, init) => { const body = JSON.parse(init.body); calls.push(body); return body.stream ? streamText('Safe text') : wrapped({ flagged: [], uncertain: false }); });
