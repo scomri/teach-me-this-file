@@ -246,6 +246,25 @@ for (const preset of presets) {
     } finally { await ui.unmount(); }
   }));
 
+  test(`${preset}: two wrong answers nudge, then reveal`, { skip }, () => timed({ preset, check: 'wrong twice' }, async () => {
+    const doc = await ingestFile(new File([EN_TEXT], 'photosynthesis.md'));
+    const ui = await mount(doc, 'Teach this in 5 minutes.', settings);
+    try {
+      await startLesson(ui);
+      const id = ui.lesson().plan.steps[0].id;
+      // Plausible but wrong, so the evaluator grades them as answers rather than off-topic.
+      await send(ui, 'Plants get all their food ready-made from the soil through their roots.');
+      assert.equal(lastStudent(ui).transition, 'nudge', `the first wrong answer was graded ${lastStudent(ui).intent} and got ${lastStudent(ui).transition}`);
+      assert.equal(ui.lesson().progress.steps[id].fails, 1);
+      assert.ok(!ui.button('Continue'), 'the first wrong answer revealed');
+      await send(ui, 'Plants catch small insects and digest them to get their energy.');
+      assert.equal(lastStudent(ui).transition, 'reveal', `the second wrong answer was graded ${lastStudent(ui).intent} and got ${lastStudent(ui).transition}`);
+      assert.ok(ui.button('Continue'), 'the second wrong answer must reveal');
+      assert.equal(ui.lesson().progress.steps[id].status, 'revealed');
+      return observe(ui);
+    } finally { await ui.unmount(); }
+  }));
+
   test(`${preset}: Hebrew file taught in English, plan to reveal`, { skip }, () => timed({ preset, check: 'he lesson' }, async () => {
     const doc = await ingestFile(new File([HE_TEXT], 'water-cycle.txt'));
     const ui = await mount(doc, 'Teach this in English, 10 minutes, for 10th graders.', settings);
@@ -264,7 +283,7 @@ for (const preset of presets) {
       const last = ui.tutorMessages().at(-1);
       const quote = [...last.querySelectorAll('blockquote')].map((b) => b.textContent).join(' ');
       const body = ui.replyText(last).replace(quote, '');
-      return `${observe(ui)}, ${plan.steps.length}/${ceiling} steps, audience "${teacher.constraints.audience}", Hebrew letters: opening ${hebrewLetters(opening)}, reveal quote ${hebrewLetters(quote)} (Latin ${(quote.match(/[a-z]/gi) ?? []).length}), reveal outside quote ${hebrewLetters(body)}`;
+      return `${observe(ui)}, ${plan.steps.length}/${ceiling} steps, audience "${teacher.constraints.audience}", Hebrew letters: opening ${hebrewLetters(opening)}, reveal quote ${hebrewLetters(quote)} (Latin ${(quote.match(/[a-z]/gi) ?? []).length}, translation in quote ${/Translation:/i.test(quote) ? 'yes' : 'no'}), reveal outside quote ${hebrewLetters(body)}`;
     } finally { await ui.unmount(); }
   }));
 
