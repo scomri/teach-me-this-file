@@ -3,6 +3,10 @@
 Upload a document, say what the lesson should be, and a tutor teaches it step by step from that file alone.
 
 [![CI](https://github.com/scomri/teach-me-this-file/actions/workflows/ci.yml/badge.svg)](https://github.com/scomri/teach-me-this-file/actions/workflows/ci.yml)
+[![Live](https://img.shields.io/badge/live-Cloud%20Run-4285F4?logo=googlecloud&logoColor=white)](https://teach-me-this-file-4pdc4dfsqa-ew.a.run.app)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+![Node 24](https://img.shields.io/badge/node-24-339933?logo=nodedotjs&logoColor=white)
+![React + Vite + Tailwind](https://img.shields.io/badge/React%20%C2%B7%20Vite%20%C2%B7%20Tailwind-JS-61DAFB?logo=react&logoColor=black)
 
 **Try it live: [teach-me-this-file-4pdc4dfsqa-ew.a.run.app](https://teach-me-this-file-4pdc4dfsqa-ew.a.run.app)** (bring your own API key; a free Gemini key works)
 
