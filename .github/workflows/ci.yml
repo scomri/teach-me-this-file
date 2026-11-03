@@ -55,4 +55,4 @@ jobs:
           gcloud run deploy teach-me-this-file --source . --region europe-west1
           --allow-unauthenticated --max-instances 1
           --memory 512Mi --cpu 1 --concurrency 80 --timeout 300 --quiet
-      - run: curl -fsS https://teach-me-this-file-630387171976.europe-west1.run.app/api/health
+      - run: curl -fsS https://teach-me-this-file-4pdc4dfsqa-ew.a.run.app/api/health
