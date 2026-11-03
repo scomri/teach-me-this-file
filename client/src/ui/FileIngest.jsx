@@ -79,9 +79,9 @@ export default function FileIngest({ onDoc, confirmPick }) {
           <div className="mt-3 text-sm">
             {state.damaged && <p className="notice notice-warning mb-2">Some text in this file may be damaged or missing. Missing characters appear as � and may affect the lesson.</p>}
             <p>
-              <span className="font-medium">{doc.name}</span>: {doc.chunks.length.toLocaleString()} chunks,{' '}
+              <span className="font-medium">{doc.name}</span>: {doc.chunks.length.toLocaleString()} {doc.chunks.length === 1 ? 'chunk' : 'chunks'},{' '}
               {doc.totalChars.toLocaleString()} characters
-              {doc.totalPages && `, ${doc.totalPages} ${unit(doc.kind)}s`} <span className="text-muted">({state.ms} ms)</span>
+              {doc.totalPages && `, ${doc.totalPages} ${unit(doc.kind)}${doc.totalPages === 1 ? '' : 's'}`} <span className="text-muted">({state.ms} ms)</span>
             </p>
             {doc.skippedPages.length > 0 && (
               <p className="mt-2 text-muted">No readable text on {unit(doc.kind)}s {doc.skippedPages.join(', ')}.</p>

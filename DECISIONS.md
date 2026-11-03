@@ -163,6 +163,29 @@ The message list is not a live region, because a screen reader would read a stre
 - **44px targets.** `.btn` has a 2.75rem minimum height, so every button is a comfortable touch target; the focus ring comes from the shared `:focus-visible` rule, and transitions and the typing indicator's animation are off under reduced motion (the dots stay visible, static).
 - **Checked.** Component tests (stubbed requests) cover the two status stages and the whole-reply behaviour, a reveal's streaming wait, Stop during grading and during the reply, the 3-second cold-start line with fake timers, the offline and online events, Enter and Shift+Enter, and button roles; `nearBottom` is tested at 0, 79, 81 and 500px; `answerWithdrawn` is a reducer test. In the browser with fixture responses (no provider, no real key): the plan wait names the file; at 375px the page has no horizontal scroll, buttons and the source summary measure 44px, and the status line reads each stage; scrolling up during a long streamed reply keeps the position and shows "Jump to latest", which returns to the end; the offline event disables Send. Known weaknesses: Enter sends, as the lesson asked, so a touch keyboard has no way to type a line break (Send is the button); the follow-or-not decision reads the last scroll event, so a whole reply landing in the frame before that event can still pull the view down; Retry, Regenerate and Continue stay enabled offline and fail with the usual error; the browser pane used for checking did not render frames, so scroll events had to be dispatched by hand and the smooth scroll of "Jump to latest" was not watched, and the wake-up line, DevTools offline and a real scaled-to-zero start were not exercised against the deployed service. "Waking the server…" can also appear for a first request that is slow because the model is slow, not the server.
 
+### Deployed walkthrough at 375px
+
+After the slice merged, the deployed service was driven at a 375×812 viewport with a real Gemini key, typed into Settings by hand. The file was a three-paragraph English Markdown file and the prompt asked for five minutes.
+
+| Check | Result |
+|---|---|
+| A made-up key, Save and check connection | "This key was rejected. Edit it and try again." The real key then saved as "ready". |
+| Pick file, plan, start | The plan wait read "Planning from photosynthesis.md…" (10 s). The file supported one step, and the plan said so ("shorter than the 5 min requested"). The opening reply arrived whole after "Writing and checking the reply…" (12 s). The header showed "Step 1 of 1" and the outline bar "Steps: 0 of 1 done". |
+| Wrong answer | A nudge back to the question, not the answer. |
+| Stop while an answer is graded | Stop pressed during "Reading your answer…". The answer returned to the box, the transcript did not keep it, and focus stayed in the box. |
+| Ask for the answer, twice | The first request got a scaffold ("Reading your answer…", then "Writing and checking the reply…"). The second got the reveal, which streamed under "Writing the reply…". It had a "From your file" quote of the right passage, bold terms, no raw `**` or `>`, Source passages one tap away, and Continue as the next action with the box disabled. |
+| Continue to the recap, scrolled to the top | The page stayed at the top while the recap streamed, and "Jump to latest" appeared. Pressing it scrolled smoothly to the end and the button went away. The done screen focused its `h1`. |
+| New lesson | It asked for confirmation, then returned to the setup screen with only the file picker, and focus on the `h1`. |
+| Horizontal scroll | None on any screen (`scrollWidth` 375 throughout). |
+| Rate limit | Not reached. About 20 connection checks in a row all stayed "ready", so the free tier did not return a 429 to small requests. The 429 message and the single automatic retry are covered by tests only. |
+| Offline | Not reached. Turning the machine's Wi-Fi off and on did not fire `offline` in the embedded browser, and `navigator.onLine` stayed true. The offline state is covered by component tests only. |
+| Cold start | After 15 idle minutes, a plan took 24 s and the service log showed a new instance starting for it. The wait read only "Planning from water.md…": the wake-up line existed on the lesson screen only, while in practice the plan is the first request after a cold start. Fixed (below). |
+
+The walkthrough found two defects, both now fixed:
+
+- **"1 chunks".** The file summary read "1 chunks" (and would read "1 pages"). It now uses the singular for one.
+- **No wake-up line while planning.** A plan takes about 10 s even on a warm server, so timing the plan itself cannot tell a cold server from a slow model. While a plan or a plan check is running, the client also sends `GET /api/health`. If that does not answer within 3 s, the status line adds "Waking the server…" until it does. Component tests cover a slow ping (the line appears at 3 s and goes when the ping answers) and a fast one (no line during a 10 s plan). The lesson screen keeps its first-request timer; the ping now covers the cold start where it actually happens.
+
 ## Resuming a lesson (built)
 
 A refresh, a reopened tab or a server cold start brings the lesson back. The lesson state is saved in the browser's IndexedDB, using the native API behind a thin wrapper in `client/src/lesson/persist.js`: one database, one object store, two keys holding the single current lesson: the file (its chunks are most of the bytes) under `source`, everything else under `current`.

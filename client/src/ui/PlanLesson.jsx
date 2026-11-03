@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MAX_PROMPT_CHARS } from '../../../shared/limits.js';
-import { checkPlan, requestPlan } from '../plan.js';
+import { checkPlan, pingServer, requestPlan } from '../plan.js';
 import PlanScreen, { NoCoverage } from './PlanScreen.jsx';
 
 const MESSAGES = {
@@ -75,6 +75,18 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
 
   useEffect(() => () => controller.current?.abort(), []);
 
+  // Cold start: a plan takes seconds even on a warm server, so the wait times a ping to the server instead
+  // of the plan, and says "Waking the server…" while that ping is over 3 seconds old.
+  const [waking, setWaking] = useState(false);
+  const waiting = state.status === 'planning' || state.status === 'checking';
+  useEffect(() => {
+    if (!waiting) return;
+    const ac = new AbortController();
+    const timer = setTimeout(() => setWaking(true), 3000);
+    pingServer(ac.signal).then(() => { clearTimeout(timer); setWaking(false); });
+    return () => { ac.abort(); clearTimeout(timer); setWaking(false); };
+  }, [waiting]);
+
   useEffect(() => {
     if (saveCount && state.status === 'key_rejected') runPlan({ wholeFile: state.wholeFile, prompt: state.prompt });
     if (saveCount && state.status === 'check_key_rejected') validateRestored();
@@ -105,6 +117,7 @@ export default function PlanLesson({ lesson, dispatch, settings, saveCount, open
       {/* The plan request also checks its questions on the server, so its wait names the file; a restored plan's check names the stage. */}
       <p role="status" className="mt-2 text-sm text-muted">
         {status === 'planning' ? <>Planning from <span dir="auto">{doc.name}</span>…</> : status === 'checking' ? 'Checking questions…' : ''}
+        {waking && ' Waking the server…'}
       </p>
 
       <div aria-live="polite">
