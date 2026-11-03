@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { initialLesson, reduce, normalizeSaved, screenOf } from './lesson/lesson.js';
 import { clearSaved, loadSaved, putSaved, shouldSave } from './lesson/persist.js';
 import ModelSettings from './ui/ModelSettings.jsx';
-import FileIngest from './ui/FileIngest.jsx';
+import FileIngest, { DAMAGED_NOTICE } from './ui/FileIngest.jsx';
 import Header from './ui/Header.jsx';
 import Lesson from './ui/Lesson.jsx';
 import PlanLesson from './ui/PlanLesson.jsx';
@@ -73,6 +73,7 @@ export default function App() {
     document.querySelector('main h1')?.focus({ preventScroll: screen === 'done' });
   }, [screen]);
   const inLesson = screen === 'lesson' || screen === 'done';
+  const teacherScreen = screen === 'setup' || screen === 'plan'; // file and plan are the teacher's; the chat is the student's
   const openSettings = () => settingsRef.current.open();
 
   return (
@@ -87,10 +88,11 @@ export default function App() {
       <main className={`mx-auto max-w-xl px-4 pt-6 ${inLesson ? 'md:grid md:max-w-4xl md:grid-cols-[13rem_minmax(0,1fr)] md:gap-8' : 'pb-12'}`}>
         {inLesson && <StepOutline lesson={lesson} />}
         <div className="min-w-0">
-          {(screen === 'setup' || screen === 'plan') && <h1 key={screen} tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}
+          {teacherScreen && <h1 key={screen} tabIndex={-1} className="heading text-2xl">{screen === 'setup' ? 'Start a lesson from a file' : 'Plan the lesson'}</h1>}
           {lessonNotice && <p role="status" className="mt-2 text-sm text-warning">{lessonNotice}</p>}
-          {loaded && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
-          {restored && lesson.source && <p className="mt-2 text-sm text-muted">Restored your lesson on {lesson.source.name}.</p>}
+          {teacherScreen && <FileIngest key={fresh} confirmPick={confirmDiscard} onDoc={(source) => { setRestored(false); dispatch({ type: 'fileRead', source }); }} />}
+          {lesson.source && (restored || inLesson) && <p className="mt-2 text-sm text-muted">{restored ? 'Restored your lesson on' : 'Teaching from'} {lesson.source.name}.</p>}
+          {inLesson && lesson.source.damaged && <p className="mt-2 notice notice-warning text-sm">{DAMAGED_NOTICE}</p>}
           {inLesson && settings && <Lesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={openSettings} />}
           {screen === 'plan' && settings && <PlanLesson lesson={lesson} dispatch={dispatch} settings={settings} saveCount={saveCount} openSettings={openSettings} />}
         </div>

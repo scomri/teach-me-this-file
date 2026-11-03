@@ -5,6 +5,8 @@ import { MAX_FILE_MB } from '../../../shared/limits.js';
 
 const SHOWN = 200; // ponytail: dev view; a 20 MB file has ~14k chunks, too many to render at once
 
+export const DAMAGED_NOTICE = 'Some text in this file may be damaged or missing. Missing characters appear as � and may affect the lesson.';
+
 const unit = (kind) => (kind === 'pptx' ? 'slide' : 'page');
 
 function where(c, kind) {
@@ -23,11 +25,12 @@ export default function FileIngest({ onDoc, confirmPick }) {
     onDoc?.(null);
     const t0 = performance.now();
     try {
-      const doc = await ingestFile(file, { allowDamagedText, onProgress: (progress) => {
+      // damaged travels with the file into the lesson, so the warning stays after this picker is gone
+      const doc = { ...await ingestFile(file, { allowDamagedText, onProgress: (progress) => {
         if (request === requestRef.current) setState({ status: 'reading', progress });
-      } });
+      } }), damaged: allowDamagedText };
       if (request !== requestRef.current) return;
-      setState({ status: 'done', doc, damaged: allowDamagedText, ms: Math.round(performance.now() - t0) });
+      setState({ status: 'done', doc, ms: Math.round(performance.now() - t0) });
       onDoc?.(doc);
     } catch (err) {
       if (request !== requestRef.current) return;
@@ -77,7 +80,7 @@ export default function FileIngest({ onDoc, confirmPick }) {
         )}
         {state.status === 'done' && (
           <div className="mt-3 text-sm">
-            {state.damaged && <p className="notice notice-warning mb-2">Some text in this file may be damaged or missing. Missing characters appear as � and may affect the lesson.</p>}
+            {doc.damaged && <p className="notice notice-warning mb-2">{DAMAGED_NOTICE}</p>}
             <p>
               <span className="font-medium">{doc.name}</span>: {doc.chunks.length.toLocaleString()} {doc.chunks.length === 1 ? 'chunk' : 'chunks'},{' '}
               {doc.totalChars.toLocaleString()} characters
