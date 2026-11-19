@@ -1,11 +1,12 @@
 // Runs the API (with --watch) and the Vite dev server together, cross-platform.
 import { spawn } from 'node:child_process';
 
-const run = (...args) => spawn(process.execPath, args, { stdio: 'inherit' });
+const run = (args, env) => spawn(process.execPath, args, { stdio: 'inherit', env: { ...process.env, ...env } });
 
 const procs = [
-  run('--watch', 'server/index.js'),
-  run('node_modules/vite/bin/vite.js', 'client'),
+  // The Vite proxy targets :8080; an inherited PORT (e.g. 5173) would break it.
+  run(['--watch', 'server/index.js'], { PORT: '8080' }),
+  run(['node_modules/vite/bin/vite.js', 'client']),
 ];
 const stop = () => procs.forEach((p) => p.kill());
 procs.forEach((p) => p.on('exit', stop));
